@@ -70,6 +70,12 @@ The app currently keeps four full visual themes:
 
 ## Implementation Notes
 
+- The codebase follows a feature-first clean architecture structure under `lib/features`, with app bootstrap code under `lib/app` and reusable UI helpers under `lib/core`.
+- Timer business logic lives in `lib/features/timer/domain` and should remain pure Dart with no Flutter UI dependency.
+- Timer presentation lives in `lib/features/timer/presentation`.
+- App theme models and theme definitions currently live in `lib/features/app_theme/domain` as a pragmatic UI-adjacent domain model because themes include Flutter `Color`, `IconData`, and `TextStyle` factories.
+- App theme selection UI lives in `lib/features/app_theme/presentation`.
+- Do not add a dependency injection or state management package until persistence, repositories, or richer shared state make it necessary.
 - Theme state currently lives in the main/home screen state.
 - Theme changes are passed to the configuration screen through callbacks.
 - Timer state currently lives in the main/home screen state.

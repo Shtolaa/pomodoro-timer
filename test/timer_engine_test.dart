@@ -1,4 +1,4 @@
-import 'package:cozy_pomodoro/timer_engine.dart';
+import 'package:cozy_pomodoro/features/timer/domain/timer_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

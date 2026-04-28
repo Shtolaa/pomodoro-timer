@@ -1,4 +1,4 @@
-import 'package:cozy_pomodoro/main.dart';
+import 'package:cozy_pomodoro/app/cozy_pomodoro_app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
