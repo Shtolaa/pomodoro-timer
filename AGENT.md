@@ -262,6 +262,13 @@ FocusSessionRecord
 9. Android widget
 10. UX polish
 
+## Review Findings
+
+### Real Timer Engine Review
+
+- `PomodoroTimerConfig` currently only validates that `focusSessionsBeforeLongBreak > 0`. It should also assert that focus, short break, and long break durations are greater than `Duration.zero`. This is important before user-created presets are added because zero or negative durations could make auto-start session advancement loop indefinitely.
+- Timer display currently floors remaining seconds with `duration.inSeconds`. Immediately after pressing Start, a 25-minute timer can show `24:59` because a few milliseconds have elapsed. The UI should use a ceil-style display calculation so the initial visible value remains `25:00` during the first second.
+
 ## Project Decision Log Rule
 
 This file must be updated whenever a meaningful product, design, architecture, or implementation decision is made.
