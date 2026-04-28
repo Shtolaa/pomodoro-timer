@@ -4,6 +4,7 @@ import 'package:cozy_pomodoro/features/app_theme/domain/pomodoro_theme.dart';
 import 'package:cozy_pomodoro/features/presets/domain/preset_color_key.dart';
 import 'package:cozy_pomodoro/features/presets/domain/preset_icon_key.dart';
 import 'package:cozy_pomodoro/features/presets/domain/timer_preset.dart';
+import 'package:cozy_pomodoro/features/statistics/domain/focus_session_record.dart';
 import 'package:cozy_pomodoro/features/timer/data/timer_state_codec.dart';
 import 'package:cozy_pomodoro/features/timer/domain/timer_engine.dart';
 import 'package:flutter/material.dart';
@@ -52,6 +53,7 @@ void main() {
     List<TimerPreset>? presets,
     int? activePresetId,
     PersistedTimerState? timerState,
+    List<FocusSessionRecord>? focusSessionRecords,
   }) async {
     final storage = await LocalPomodoroStorage.load();
     if (theme != null) {
@@ -66,6 +68,31 @@ void main() {
     if (timerState != null) {
       await storage.saveTimerState(timerState);
     }
+    if (focusSessionRecords != null) {
+      await storage.saveFocusSessionRecords(focusSessionRecords);
+    }
+  }
+
+  FocusSessionRecord focusRecord({
+    int id = 1,
+    int presetId = 1,
+    String presetNameSnapshot = 'Standard Pomodoro',
+    PresetIconKey presetIconSnapshot = PresetIconKey.book,
+    PresetColorKey presetColorSnapshot = PresetColorKey.peach,
+    int durationSeconds = 1500,
+    DateTime? startedAt,
+  }) {
+    final start = startedAt ?? DateTime(2026, 4, 28, 9);
+    return FocusSessionRecord(
+      id: id,
+      presetId: presetId,
+      presetNameSnapshot: presetNameSnapshot,
+      presetIconSnapshot: presetIconSnapshot,
+      presetColorSnapshot: presetColorSnapshot,
+      durationSeconds: durationSeconds,
+      startedAt: start,
+      completedAt: start.add(Duration(seconds: durationSeconds)),
+    );
   }
 
   testWidgets('switches full app themes from configuration', (tester) async {
@@ -413,5 +440,75 @@ void main() {
 
     expect(find.text('25:00'), findsOneWidget);
     expect(find.text('Start'), findsOneWidget);
+  });
+
+  testWidgets('shows statistics and deletes deleted preset history',
+      (tester) async {
+    await seedStorage(
+      presets: [
+        standardPreset(),
+        customPreset(deletedAt: DateTime(2026, 4, 29, 9)),
+      ],
+      activePresetId: 1,
+      focusSessionRecords: [
+        focusRecord(),
+        focusRecord(
+          id: 2,
+          presetId: 2,
+          presetNameSnapshot: 'Saved Flow',
+          presetIconSnapshot: PresetIconKey.palette,
+          presetColorSnapshot: PresetColorKey.lavender,
+          startedAt: DateTime(2026, 4, 29, 9),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(const CozyPomodoroApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.tune_rounded));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Statistics'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Statistics'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+    expect(find.text('50m'), findsOneWidget);
+    expect(find.text('Saved Flow'), findsOneWidget);
+    expect(find.text('Deleted preset history'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Delete Saved Flow statistics'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete Saved Flow statistics?'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete stats'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Saved Flow'), findsNothing);
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('25m'), findsOneWidget);
+
+    final storage = await LocalPomodoroStorage.load();
+    expect(storage.loadFocusSessionRecords(), hasLength(1));
+  });
+
+  testWidgets('formats statistics focus time in days', (tester) async {
+    await seedStorage(
+      presets: [standardPreset()],
+      activePresetId: 1,
+      focusSessionRecords: [
+        focusRecord(durationSeconds: 25 * 60 * 60),
+      ],
+    );
+
+    await tester.pumpWidget(const CozyPomodoroApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.tune_rounded));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Statistics'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1d 1h'), findsWidgets);
   });
 }

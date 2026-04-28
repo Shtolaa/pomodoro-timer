@@ -4,6 +4,8 @@ import '../features/app_theme/data/pomodoro_theme_codec.dart';
 import '../features/app_theme/domain/pomodoro_theme.dart';
 import '../features/presets/data/timer_preset_codec.dart';
 import '../features/presets/domain/timer_preset.dart';
+import '../features/statistics/data/focus_session_record_codec.dart';
+import '../features/statistics/domain/focus_session_record.dart';
 import '../features/timer/data/timer_state_codec.dart';
 
 class LocalPomodoroStorage {
@@ -14,6 +16,7 @@ class LocalPomodoroStorage {
   static const _activePresetIdKey = 'active_preset_id';
   static const _timerStateKey = 'timer_state';
   static const _notificationsEnabledKey = 'notifications_enabled';
+  static const _focusSessionRecordsKey = 'focus_session_records';
 
   final SharedPreferences preferences;
 
@@ -67,5 +70,22 @@ class LocalPomodoroStorage {
 
   Future<void> saveNotificationsEnabled(bool enabled) async {
     await preferences.setBool(_notificationsEnabledKey, enabled);
+  }
+
+  List<FocusSessionRecord> loadFocusSessionRecords() {
+    final value = preferences.getString(_focusSessionRecordsKey);
+    if (value == null) {
+      return const [];
+    }
+    return decodeFocusSessionRecords(value) ?? const [];
+  }
+
+  Future<void> saveFocusSessionRecords(
+    List<FocusSessionRecord> records,
+  ) async {
+    await preferences.setString(
+      _focusSessionRecordsKey,
+      encodeFocusSessionRecords(records),
+    );
   }
 }
