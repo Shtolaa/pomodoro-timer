@@ -3,12 +3,15 @@ enum PomodoroSessionType { focus, shortBreak, longBreak }
 enum PomodoroTimerStatus { idle, running, paused }
 
 class PomodoroTimerConfig {
-  const PomodoroTimerConfig({
+  PomodoroTimerConfig({
     this.focusDuration = const Duration(minutes: 25),
     this.shortBreakDuration = const Duration(minutes: 5),
     this.longBreakDuration = const Duration(minutes: 15),
     this.focusSessionsBeforeLongBreak = 4,
-  }) : assert(focusSessionsBeforeLongBreak > 0);
+  })  : assert(focusDuration > Duration.zero),
+        assert(shortBreakDuration > Duration.zero),
+        assert(longBreakDuration > Duration.zero),
+        assert(focusSessionsBeforeLongBreak > 0);
 
   final Duration focusDuration;
   final Duration shortBreakDuration;
@@ -101,7 +104,8 @@ class PomodoroTimerState {
 }
 
 class PomodoroTimerEngine {
-  const PomodoroTimerEngine({this.config = const PomodoroTimerConfig()});
+  PomodoroTimerEngine({PomodoroTimerConfig? config})
+      : config = config ?? PomodoroTimerConfig();
 
   final PomodoroTimerConfig config;
 
@@ -198,4 +202,12 @@ class PomodoroTimerEngine {
       completedFocusSessionsInCycle: completedFocusSessions,
     );
   }
+}
+
+String formatRemainingForDisplay(Duration duration) {
+  final milliseconds = duration.inMilliseconds;
+  final totalSeconds = milliseconds <= 0 ? 0 : (milliseconds / 1000).ceil();
+  final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+  final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+  return '$minutes:$seconds';
 }

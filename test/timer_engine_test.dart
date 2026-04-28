@@ -2,14 +2,64 @@ import 'package:cozy_pomodoro/timer_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  const config = PomodoroTimerConfig(
+  final config = PomodoroTimerConfig(
     focusDuration: Duration(minutes: 25),
     shortBreakDuration: Duration(minutes: 5),
     longBreakDuration: Duration(minutes: 15),
     focusSessionsBeforeLongBreak: 4,
   );
-  const engine = PomodoroTimerEngine(config: config);
+  final engine = PomodoroTimerEngine(config: config);
   final now = DateTime(2026, 4, 28, 9);
+
+  test('validates configured durations are positive', () {
+    expect(
+      () => PomodoroTimerConfig(focusDuration: Duration.zero),
+      throwsAssertionError,
+    );
+    expect(
+      () => PomodoroTimerConfig(shortBreakDuration: Duration.zero),
+      throwsAssertionError,
+    );
+    expect(
+      () => PomodoroTimerConfig(longBreakDuration: Duration.zero),
+      throwsAssertionError,
+    );
+    expect(
+      () => PomodoroTimerConfig(focusDuration: const Duration(seconds: -1)),
+      throwsAssertionError,
+    );
+    expect(
+      () => PomodoroTimerConfig(
+        shortBreakDuration: const Duration(seconds: -1),
+      ),
+      throwsAssertionError,
+    );
+    expect(
+      () => PomodoroTimerConfig(
+        longBreakDuration: const Duration(seconds: -1),
+      ),
+      throwsAssertionError,
+    );
+  });
+
+  test('formats remaining time with ceil-style seconds', () {
+    expect(formatRemainingForDisplay(const Duration(minutes: 25)), '25:00');
+    expect(
+      formatRemainingForDisplay(
+        const Duration(minutes: 24, seconds: 59, milliseconds: 1),
+      ),
+      '25:00',
+    );
+    expect(
+      formatRemainingForDisplay(
+        const Duration(minutes: 24, seconds: 58, milliseconds: 999),
+      ),
+      '24:59',
+    );
+    expect(formatRemainingForDisplay(Duration.zero), '00:00');
+    expect(
+        formatRemainingForDisplay(const Duration(milliseconds: -1)), '00:00');
+  });
 
   test('starts a focus countdown', () {
     final state = engine.start(engine.initialState(), now);

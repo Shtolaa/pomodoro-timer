@@ -208,7 +208,7 @@ class ThemePrototypeScreen extends StatefulWidget {
 
 class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
   PomodoroThemeOption selectedTheme = PomodoroThemeOption.themes.first;
-  final PomodoroTimerEngine timerEngine = const PomodoroTimerEngine();
+  final PomodoroTimerEngine timerEngine = PomodoroTimerEngine();
   late PomodoroTimerState timerState = timerEngine.initialState();
   Timer? timerTicker;
 
@@ -902,12 +902,6 @@ class _TimerDial extends StatelessWidget {
   final PomodoroTimerConfig timerConfig;
   final PomodoroTimerState timerState;
 
-  String formatRemaining(Duration duration) {
-    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
-
   String get sessionLabel {
     return switch (timerState.sessionType) {
       PomodoroSessionType.focus => 'deep focus',
@@ -958,7 +952,7 @@ class _TimerDial extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                formatRemaining(remaining),
+                formatRemainingForDisplay(remaining),
                 style: theme.headingFont(
                   color: theme.ink,
                   fontSize: 53,

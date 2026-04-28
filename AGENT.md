@@ -76,8 +76,10 @@ The app currently keeps four full visual themes:
 - Timer countdown and session transitions are handled by a pure Dart timer engine in `lib/timer_engine.dart`.
 - The timer engine is timestamp-based in memory and auto-starts the next session after completion.
 - The timer currently uses hardcoded local durations: 25-minute focus, 5-minute short break, 15-minute long break, and a long break after 4 completed focus sessions.
+- Timer configuration validates that focus, short break, and long break durations are greater than `Duration.zero` to prevent non-advancing auto-start loops.
+- Timer display uses ceil-style remaining seconds so a newly started 25-minute timer remains visually at `25:00` during the first partial second.
 - Existing tests verify that the configuration screen can switch from the default theme to Peach Cafe.
-- Timer engine tests verify countdown controls and automatic session transitions.
+- Timer engine tests verify countdown controls, automatic session transitions, duration validation, and display formatting.
 - Future background timer restoration should persist and restore the timestamp-based timer state instead of relying only on in-memory state.
 - Background timer restoration should reconstruct state from persisted start/end timestamps.
 - Auto-start behavior must be handled by the timer engine because it affects app reopen logic, notification scheduling, and widget state.
@@ -262,12 +264,42 @@ FocusSessionRecord
 9. Android widget
 10. UX polish
 
+## Suggested Branch Roadmap
+
+Timer engine review fixes are complete. Continue feature work in this order:
+
+1. `feature/timer-presets-model`
+   - Add `TimerPreset`, preset icon keys, preset color keys, curated pastel colors, and validation tests.
+
+2. `feature/preset-cards-selection`
+   - Add cozy preset cards and active preset selection UI.
+
+3. `feature/preset-create-edit`
+   - Add create/edit/delete preset flows.
+
+4. `feature/local-persistence`
+   - Persist selected app theme, presets, active preset, active timer state, and statistics records.
+
+5. `feature/background-timer-restore`
+   - Restore timestamp-based timer state after app close/reopen and handle auto-started sessions while closed.
+
+6. `feature/notifications`
+   - Add Android notification permission flow and scheduled session completion notifications.
+
+7. `feature/statistics`
+   - Add completed focus session statistics, total focus hours, and preset breakdowns.
+
+8. `feature/android-widget`
+   - Add Android home-screen widget with timer display and start/pause control.
+
+This order should be followed unless a new decision updates the roadmap.
+
 ## Review Findings
 
 ### Real Timer Engine Review
 
-- `PomodoroTimerConfig` currently only validates that `focusSessionsBeforeLongBreak > 0`. It should also assert that focus, short break, and long break durations are greater than `Duration.zero`. This is important before user-created presets are added because zero or negative durations could make auto-start session advancement loop indefinitely.
-- Timer display currently floors remaining seconds with `duration.inSeconds`. Immediately after pressing Start, a 25-minute timer can show `24:59` because a few milliseconds have elapsed. The UI should use a ceil-style display calculation so the initial visible value remains `25:00` during the first second.
+- Resolved: `PomodoroTimerConfig` validates that focus, short break, and long break durations are greater than `Duration.zero`.
+- Resolved: Timer display uses ceil-style remaining seconds so the initial visible value remains `25:00` during the first partial second after starting.
 
 ## Project Decision Log Rule
 
