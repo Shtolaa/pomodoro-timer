@@ -11,6 +11,8 @@ import '../../presets/domain/preset_color_key.dart';
 import '../../presets/domain/preset_icon_key.dart';
 import '../../presets/domain/timer_preset.dart';
 import '../../presets/presentation/preset_form_screen.dart';
+import '../data/timer_notification_message.dart';
+import '../data/timer_notification_service.dart';
 import '../data/timer_state_codec.dart';
 import '../domain/timer_engine.dart';
 
@@ -43,8 +45,11 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
     config: activePreset.toTimerConfig(),
   );
   late PomodoroTimerState timerState = timerEngine.initialState();
+  final TimerNotificationService notificationService =
+      TimerNotificationService();
   LocalPomodoroStorage? localStorage;
   Timer? timerTicker;
+  bool notificationsEnabled = false;
 
   @override
   void initState() {
@@ -79,6 +84,7 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
 
     final loadedTheme = storage.loadSelectedTheme();
     final loadedPresets = storage.loadPresets();
+    final loadedNotificationsEnabled = storage.loadNotificationsEnabled();
     final usablePresets = loadedPresets == null ||
             loadedPresets.every((preset) => preset.deletedAt != null)
         ? [_standardPomodoroPreset]
@@ -113,10 +119,12 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
       activePreset = nextActivePreset;
       timerEngine = nextTimerEngine;
       timerState = loadedTimerState;
+      notificationsEnabled = loadedNotificationsEnabled;
     });
 
     if (timerState.status == PomodoroTimerStatus.running) {
       startTicker();
+      scheduleTimerNotification();
     }
   }
 
@@ -178,6 +186,47 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
     );
   }
 
+  void saveNotificationsEnabled() {
+    final storage = localStorage;
+    if (storage == null) {
+      return;
+    }
+    unawaited(storage.saveNotificationsEnabled(notificationsEnabled));
+  }
+
+  Future<bool> setNotificationsEnabled(bool enabled) async {
+    final nextEnabled =
+        enabled && await notificationService.requestPermission();
+    if (!mounted) {
+      return nextEnabled;
+    }
+
+    setState(() => notificationsEnabled = nextEnabled);
+    saveNotificationsEnabled();
+
+    if (nextEnabled) {
+      scheduleTimerNotification();
+    } else {
+      cancelTimerNotification();
+    }
+
+    return nextEnabled;
+  }
+
+  void scheduleTimerNotification() {
+    unawaited(
+      notificationService.scheduleSessionCompletion(
+        state: timerState,
+        config: timerEngine.config,
+        notificationsEnabled: notificationsEnabled,
+      ),
+    );
+  }
+
+  void cancelTimerNotification() {
+    unawaited(notificationService.cancelTimerNotification());
+  }
+
   void startTicker() {
     timerTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
       updateTimer(
@@ -198,6 +247,7 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
       PomodoroTimerState Function(PomodoroTimerState state, DateTime now)
           action,
       {bool persist = true}) {
+    final previousTimerState = timerState;
     setState(() {
       timerState = action(timerState, DateTime.now());
     });
@@ -209,6 +259,40 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
     if (persist) {
       saveTimerState();
     }
+    syncTimerNotificationIfNeeded(previousTimerState);
+  }
+
+  void syncTimerNotificationIfNeeded(PomodoroTimerState previousTimerState) {
+    if (!notificationsEnabled ||
+        !_notificationTargetChanged(previousTimerState)) {
+      return;
+    }
+
+    final completedSession = completedSessionForTransition(
+      previousTimerState,
+      timerState,
+    );
+    if (completedSession != null) {
+      unawaited(
+        notificationService.showSessionTransition(
+          completedState: completedSession,
+          config: timerEngine.config,
+          notificationsEnabled: notificationsEnabled,
+        ),
+      );
+    }
+
+    if (timerState.status == PomodoroTimerStatus.running) {
+      scheduleTimerNotification();
+    } else {
+      cancelTimerNotification();
+    }
+  }
+
+  bool _notificationTargetChanged(PomodoroTimerState previousTimerState) {
+    return previousTimerState.status != timerState.status ||
+        previousTimerState.sessionType != timerState.sessionType ||
+        previousTimerState.endsAt != timerState.endsAt;
   }
 
   void toggleTimer() {
@@ -225,6 +309,7 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
     setState(() => timerState = timerEngine.reset(timerState));
     stopTickerIfNotRunning();
     saveTimerState();
+    cancelTimerNotification();
   }
 
   void selectPreset(TimerPreset preset) {
@@ -237,6 +322,7 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
     timerTicker = null;
     savePresetState();
     saveTimerState();
+    cancelTimerNotification();
   }
 
   TimerPreset createPreset(PresetFormValues values) {
@@ -353,6 +439,7 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
                               selectedTheme: selectedTheme,
                               presets: presets,
                               activePreset: activePreset,
+                              notificationsEnabled: notificationsEnabled,
                               onThemeSelected: (theme) {
                                 setState(() => selectedTheme = theme);
                                 saveSelectedTheme();
@@ -361,6 +448,8 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
                               onPresetCreated: createPreset,
                               onPresetUpdated: updatePreset,
                               onPresetDeleted: deletePreset,
+                              onNotificationsEnabledChanged:
+                                  setNotificationsEnabled,
                             ),
                           ),
                         );

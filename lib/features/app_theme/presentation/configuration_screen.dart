@@ -12,22 +12,26 @@ class ConfigurationScreen extends StatefulWidget {
     required this.selectedTheme,
     required this.presets,
     required this.activePreset,
+    required this.notificationsEnabled,
     required this.onThemeSelected,
     required this.onPresetSelected,
     required this.onPresetCreated,
     required this.onPresetUpdated,
     required this.onPresetDeleted,
+    required this.onNotificationsEnabledChanged,
   });
 
   final PomodoroThemeOption selectedTheme;
   final List<TimerPreset> presets;
   final TimerPreset activePreset;
+  final bool notificationsEnabled;
   final ValueChanged<PomodoroThemeOption> onThemeSelected;
   final ValueChanged<TimerPreset> onPresetSelected;
   final TimerPreset Function(PresetFormValues values) onPresetCreated;
   final TimerPreset Function(TimerPreset preset, PresetFormValues values)
       onPresetUpdated;
   final TimerPreset Function(TimerPreset preset) onPresetDeleted;
+  final Future<bool> Function(bool enabled) onNotificationsEnabledChanged;
 
   @override
   State<ConfigurationScreen> createState() => _ConfigurationScreenState();
@@ -36,6 +40,8 @@ class ConfigurationScreen extends StatefulWidget {
 class _ConfigurationScreenState extends State<ConfigurationScreen> {
   late PomodoroThemeOption selectedTheme = widget.selectedTheme;
   late TimerPreset activePreset = widget.activePreset;
+  late bool notificationsEnabled = widget.notificationsEnabled;
+  bool updatingNotifications = false;
 
   void selectTheme(PomodoroThemeOption theme) {
     setState(() => selectedTheme = theme);
@@ -83,6 +89,29 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     setState(() => activePreset = widget.onPresetDeleted(preset));
   }
 
+  Future<void> setNotificationsEnabled(bool enabled) async {
+    setState(() => updatingNotifications = true);
+    final nextEnabled = await widget.onNotificationsEnabledChanged(enabled);
+    if (!mounted) {
+      return;
+    }
+    if (enabled && !nextEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Notifications could not be enabled. Check Android notification permission.',
+            style: selectedTheme.bodyFont(fontWeight: FontWeight.w800),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+    setState(() {
+      notificationsEnabled = nextEnabled;
+      updatingNotifications = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -121,6 +150,13 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                           onDeletePreset: deletePreset,
                         ),
                         const SizedBox(height: 18),
+                        _NotificationSettingsCard(
+                          theme: selectedTheme,
+                          notificationsEnabled: notificationsEnabled,
+                          updating: updatingNotifications,
+                          onChanged: setNotificationsEnabled,
+                        ),
+                        const SizedBox(height: 18),
                         _ThemeListSelector(
                           selectedTheme: selectedTheme,
                           onThemeSelected: selectTheme,
@@ -133,6 +169,85 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _NotificationSettingsCard extends StatelessWidget {
+  const _NotificationSettingsCard({
+    required this.theme,
+    required this.notificationsEnabled,
+    required this.updating,
+    required this.onChanged,
+  });
+
+  final PomodoroThemeOption theme;
+  final bool notificationsEnabled;
+  final bool updating;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: theme.card.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: theme.card.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: theme.softAccent.withValues(alpha: 0.58),
+              borderRadius: BorderRadius.circular(19),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+            ),
+            child: Icon(Icons.notifications_active_rounded,
+                color: theme.ink, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Notifications',
+                  style: theme.headingFont(
+                    color: theme.onPrimary,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  notificationsEnabled
+                      ? 'Session-end notes are scheduled when the timer runs.'
+                      : 'Ask Android before sending gentle session transition notes.',
+                  style: theme.bodyFont(
+                    color: theme.onPrimary.withValues(alpha: 0.84),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Switch(
+            value: notificationsEnabled,
+            onChanged: updating ? null : onChanged,
+            activeThumbColor: theme.accent,
+            activeTrackColor: theme.softAccent.withValues(alpha: 0.72),
+            inactiveThumbColor: theme.card,
+            inactiveTrackColor: Colors.white.withValues(alpha: 0.34),
+          ),
+        ],
       ),
     );
   }
