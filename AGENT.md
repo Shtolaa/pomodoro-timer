@@ -16,6 +16,18 @@ The app should feel calm, soft, and pleasant to use during focused work sessions
 - Theme selector layout: vertical list of larger theme cards
 - Home screen should focus on the timer experience, not theme selection
 - Configuration screen should contain app customization options
+- Timer sessions should auto-start after each session completes
+- Timer should continue when the app is closed
+- Notifications are required
+- Presets are timer-related only and separate from app themes
+- Presets should use cozy card UI consistent with the app themes
+- Presets should use predefined app icons
+- Preset card colors must be selected from curated pastel colors only
+- Statistics should be included in the app
+- Statistics should count only completed focus sessions
+- Deleting a preset should keep historical statistics by default
+- The app should provide an explicit option to delete a deleted preset's historical statistics
+- The Android home-screen widget should include start/pause control
 
 ## Current Themes
 
@@ -62,40 +74,189 @@ The app currently keeps four full visual themes:
 - Theme changes are passed to the configuration screen through callbacks.
 - The timer is still a visual prototype and does not yet implement real countdown behavior.
 - Existing tests verify that the configuration screen can switch from the default theme to Peach Cafe.
+- Future timer implementation should use timestamp-based state instead of relying only on an in-memory countdown.
+- Background timer restoration should reconstruct state from persisted start/end timestamps.
+- Auto-start behavior must be handled by the timer engine because it affects app reopen logic, notification scheduling, and widget state.
+- Widget and notifications should read/update the same persisted timer state as the app.
+- Statistics should store preset snapshots so deleted presets can still appear in historical data.
 
-## Future Plan
+## Functional Roadmap
 
-1. Implement real Pomodoro timer behavior:
+1. Core timer:
    - Focus session
    - Short break
    - Long break
-   - Start, pause, reset
-   - Session transitions
+   - Start, pause, resume, reset
+   - Auto-start next session after completion
+   - Long break after the configured number of completed focus sessions
+   - Only completed focus sessions count toward statistics
 
-2. Add persistent settings:
+2. Timer presets:
+   - User-created presets
+   - Presets affect timer behavior only, not the app theme
+   - Preset name
+   - Focus duration
+   - Short break duration
+   - Long break duration
+   - Sessions before long break
+   - Icon from predefined app icon set
+   - Card color from curated pastel palette
+   - Create, edit, delete, and select active preset
+   - Display presets as cozy cards
+
+3. Persistence:
    - Save selected theme
-   - Save timer durations
-   - Save notification preferences
+   - Save presets
+   - Save active preset
+   - Save active timer state
+   - Save completed focus session statistics
+   - Persist timer state using timestamps so the timer can continue when the app is closed
 
-3. Add Android notifications:
-   - Notify when a session ends
-   - Optional sound/vibration
+4. Background timer:
+   - Timer continues when the app is closed
+   - Store active preset ID
+   - Store current session type
+   - Store timer status
+   - Store session start timestamp
+   - Store session target end timestamp
+   - Store paused remaining duration
+   - Store completed focus sessions in current cycle
+   - Recalculate timer state on app reopen
+   - If sessions ended while the app was closed, auto-start subsequent sessions based on saved timestamps
 
-4. Improve configuration screen:
-   - Timer duration settings
+5. Notifications:
+   - Notify when focus session ends
+   - Notify when short break ends
+   - Notify when long break ends
+   - Because sessions auto-start, notifications should explain which session ended and which one started
+   - Add Android notification permission flow
+   - Add notification enable/disable setting
+   - Optional sound and vibration can be added later
+
+6. Configuration screen:
+   - Keep app theme selector
+   - Add preset management
    - Notification settings
-   - Theme preview refinements
+   - Curated pastel color selector for preset cards
+   - Predefined icon selector for presets
 
-5. Polish UX:
-   - Better timer animations
+7. Statistics:
+   - Count only completed focus sessions
+   - Sessions completed
+   - Total focus hours
+   - Hours per preset
+   - Sessions per preset
+   - If a preset is deleted, historical statistics remain by default
+   - Statistics should retain preset name, color, and icon snapshots
+   - Deleting historical statistics should be a separate explicit action with confirmation
+
+8. Android home-screen widget:
+   - Show current timer
+   - Show current session type
+   - Show active preset name
+   - Include start/pause control
+   - Use shared persisted timer state
+   - Start/pause from widget should update app timer state and scheduled notifications
+
+9. Polish UX:
+   - Smooth circular progress animation
+   - Cozy transition between sessions
+   - Theme-specific visual details
+   - Preset card animations
    - Haptic feedback
    - Accessibility labels
-   - Responsive spacing for small phones
+   - Small-screen layout polish
 
-6. Prepare app identity:
+10. App identity and release prep:
    - App icon
    - Splash screen
    - App name decision
+   - Android release build
+   - Privacy note if data remains local-only
+
+## Preset UX Decisions
+
+- Presets should be shown as cards.
+- Presets should visually follow the same cozy/pastel design quality as app themes.
+- Users should choose a preset icon from predefined options.
+- Users should choose a preset card color from curated pastel options only.
+- Do not allow arbitrary custom colors for preset cards unless this decision is revisited.
+- Suggested preset icon options:
+  - Book / studying
+  - Meditation / self-care
+  - Coffee / cafe work
+  - Laptop / deep work
+  - Dumbbell / exercise
+  - Music / practice
+  - Palette / creative work
+  - Moon / rest
+
+## Statistics Decisions
+
+- Statistics should be included in the app.
+- Count only completed focus sessions.
+- Do not count short breaks or long breaks in focus statistics.
+- Track sessions completed.
+- Track total focus hours.
+- Track hours per preset.
+- Track sessions per preset.
+- Deleted presets should keep historical statistics by default.
+- Users should be able to explicitly delete historical statistics for a deleted preset.
+- Statistics records should keep preset snapshots so historical data remains understandable if a preset changes or is deleted.
+
+## Suggested Data Models
+
+```text
+TimerPreset
+- id
+- name
+- focusDuration
+- shortBreakDuration
+- longBreakDuration
+- sessionsBeforeLongBreak
+- iconKey
+- cardColorKey
+- createdAt
+- updatedAt
+- deletedAt nullable
+```
+
+```text
+ActiveTimerState
+- activePresetId
+- sessionType
+- status
+- startedAt
+- endsAt
+- pausedRemainingSeconds
+- completedFocusSessionsInCycle
+- autoStartEnabled = true
+```
+
+```text
+FocusSessionRecord
+- id
+- presetId nullable
+- presetNameSnapshot
+- presetIconSnapshot
+- presetColorSnapshot
+- durationSeconds
+- startedAt
+- completedAt
+```
+
+## Recommended Build Order
+
+1. Real timer engine with auto-start
+2. Preset data model
+3. Preset cards and preset selection
+4. Preset create/edit flow
+5. Local persistence
+6. Timestamp-based background timer restoration
+7. Notifications
+8. Statistics
+9. Android widget
+10. UX polish
 
 ## Project Decision Log Rule
 
@@ -110,6 +271,10 @@ Examples of decisions that should update this file:
 - Adding persistence
 - Adding notification behavior
 - Changing timer session rules
+- Changing preset behavior
+- Changing statistics rules
+- Changing background timer behavior
+- Changing Android widget behavior
 - Renaming the app
 - Changing target platforms
 
