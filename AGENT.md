@@ -73,6 +73,9 @@ The app currently keeps four full visual themes:
 - The codebase follows a feature-first clean architecture structure under `lib/features`, with app bootstrap code under `lib/app` and reusable UI helpers under `lib/core`.
 - Timer business logic lives in `lib/features/timer/domain` and should remain pure Dart with no Flutter UI dependency.
 - Timer presentation lives in `lib/features/timer/presentation`.
+- Preset domain models live in `lib/features/presets/domain` and should remain pure Dart with no Flutter UI dependency.
+- Preset icon and card color choices are represented as curated enum keys in the domain; Flutter icon/color mapping belongs in presentation.
+- Preset IDs are positive integers for local-only storage; new preset IDs should be calculated as max existing preset ID plus one, including soft-deleted presets, and IDs should never be reused.
 - App theme models and theme definitions currently live in `lib/features/app_theme/domain` as a pragmatic UI-adjacent domain model because themes include Flutter `Color`, `IconData`, and `TextStyle` factories.
 - App theme selection UI lives in `lib/features/app_theme/presentation`.
 - Do not add a dependency injection or state management package until persistence, repositories, or richer shared state make it necessary.
