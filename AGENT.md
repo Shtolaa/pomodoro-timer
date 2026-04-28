@@ -108,6 +108,13 @@ The app currently keeps four full visual themes:
 - Notification text names the completed session and the auto-started next session.
 - Notification v1 intentionally uses Android inexact scheduling, so Android battery optimization or Doze may delay delivery. Exact end-time alarms are deferred to notification v2, which should evaluate exact alarm capability handling and `SCHEDULE_EXACT_ALARM` permission UX/policy requirements.
 - Local persistence does not include statistics or Android widgets yet; those remain separate deferred roadmap steps.
+- Local statistics are implemented with shared_preferences JSON records for completed focus sessions only.
+- Statistics records keep preset ID, preset name snapshot, preset icon key snapshot, preset color key snapshot, duration seconds, startedAt, and completedAt so historical data remains understandable after preset edits or deletion.
+- Short breaks and long breaks do not count toward focus statistics.
+- Running timer restoration records any completed focus sessions that elapsed while the app was closed and avoids reusing existing records with the same preset/start/completion timestamps.
+- Deleted presets keep historical statistics by default, and the statistics UI provides an explicit confirmed action to delete historical statistics for a deleted preset.
+- The configuration screen shows local statistics totals and per-preset snapshot breakdowns in the existing cozy/pastel style.
+- Android widgets remain deferred to the `feature/android-widget` branch.
 - Auto-start behavior must be handled by the timer engine because it affects app reopen logic, notification scheduling, and widget state.
 - Widget and notifications should read/update the same persisted timer state as the app.
 - Statistics should store preset snapshots so deleted presets can still appear in historical data.
@@ -287,7 +294,7 @@ FocusSessionRecord
 5. Done: Local persistence
 6. Done: Timestamp-based background timer restoration
 7. Done: Notifications
-8. Statistics
+8. Done: Statistics
 9. Android widget
 10. UX polish
 
@@ -321,8 +328,8 @@ Timer engine review fixes are complete. Continue feature work in this order:
    - Completed with Android local notifications, Android 13+ notification permission flow, a persisted enable/disable setting in configuration, inexact scheduled session-completion notifications, cancellation on pause/reset/preset change/disable, and rescheduling after running timer restore or auto-start session transitions.
    - Notification v1 intentionally avoids exact-alarm permission handling; exact end-time alarms are deferred to notification v2.
 
-7. `feature/statistics`
-   - Add completed focus session statistics, total focus hours, and preset breakdowns.
+7. Done: `feature/statistics`
+   - Completed with pure Dart focus session records, shared_preferences JSON persistence, focus-only counting, background-restore recording, preset snapshots for historical readability, configuration-screen totals and per-preset breakdowns, and confirmed deletion of historical statistics for deleted presets.
 
 8. `feature/android-widget`
    - Add Android home-screen widget with timer display and start/pause control.

@@ -11,6 +11,7 @@ import '../../presets/domain/preset_color_key.dart';
 import '../../presets/domain/preset_icon_key.dart';
 import '../../presets/domain/timer_preset.dart';
 import '../../presets/presentation/preset_form_screen.dart';
+import '../../statistics/domain/focus_session_record.dart';
 import '../data/timer_notification_message.dart';
 import '../data/timer_notification_service.dart';
 import '../data/timer_state_codec.dart';
@@ -41,6 +42,7 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
   PomodoroThemeOption selectedTheme = PomodoroThemeOption.themes.first;
   late final List<TimerPreset> presets = [_standardPomodoroPreset];
   late TimerPreset activePreset = presets.first;
+  final List<FocusSessionRecord> focusSessionRecords = [];
   late PomodoroTimerEngine timerEngine = PomodoroTimerEngine(
     config: activePreset.toTimerConfig(),
   );
@@ -84,13 +86,15 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
 
     final loadedTheme = storage.loadSelectedTheme();
     final loadedPresets = storage.loadPresets();
+    final loadedFocusSessionRecords = storage.loadFocusSessionRecords();
     final loadedNotificationsEnabled = storage.loadNotificationsEnabled();
+    final persistedTimerState = storage.loadTimerState();
     final usablePresets = loadedPresets == null ||
             loadedPresets.every((preset) => preset.deletedAt != null)
         ? [_standardPomodoroPreset]
         : loadedPresets;
-    final activePresetId = storage.loadTimerState()?.activePresetId ??
-        storage.loadActivePresetId();
+    final activePresetId =
+        persistedTimerState?.activePresetId ?? storage.loadActivePresetId();
     final nextActivePreset = activePresetId == null
         ? usablePresets.firstWhere((preset) => preset.deletedAt == null)
         : usablePresets.firstWhere(
@@ -102,11 +106,27 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
     final nextTimerEngine = PomodoroTimerEngine(
       config: nextActivePreset.toTimerConfig(),
     );
+    final loadedAt = DateTime.now();
     final loadedTimerState = restoredTimerState(
-      storage.loadTimerState(),
+      persistedTimerState,
       activePreset: nextActivePreset,
       engine: nextTimerEngine,
+      now: loadedAt,
     );
+    final restoredFocusSessionRecords = persistedTimerState == null ||
+            persistedTimerState.activePresetId != nextActivePreset.id
+        ? <FocusSessionRecord>[]
+        : focusSessionRecordsCompletedBy(
+            persistedTimerState.state,
+            loadedAt,
+            config: nextTimerEngine.config,
+            preset: nextActivePreset,
+            existingRecords: loadedFocusSessionRecords,
+          );
+    final nextFocusSessionRecords = [
+      ...loadedFocusSessionRecords,
+      ...restoredFocusSessionRecords,
+    ];
 
     setState(() {
       localStorage = storage;
@@ -117,10 +137,18 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
         ..clear()
         ..addAll(usablePresets);
       activePreset = nextActivePreset;
+      focusSessionRecords
+        ..clear()
+        ..addAll(nextFocusSessionRecords);
       timerEngine = nextTimerEngine;
       timerState = loadedTimerState;
       notificationsEnabled = loadedNotificationsEnabled;
     });
+
+    if (restoredFocusSessionRecords.isNotEmpty) {
+      saveFocusSessionRecords();
+      saveTimerState();
+    }
 
     if (timerState.status == PomodoroTimerStatus.running) {
       startTicker();
@@ -132,12 +160,13 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
     PersistedTimerState? persisted, {
     required TimerPreset activePreset,
     required PomodoroTimerEngine engine,
+    required DateTime now,
   }) {
     if (persisted == null || persisted.activePresetId != activePreset.id) {
       return engine.initialState();
     }
 
-    return engine.restorePersistedState(persisted.state, DateTime.now());
+    return engine.restorePersistedState(persisted.state, now);
   }
 
   PomodoroTimerState timerStateSnapshot([DateTime? now]) {
@@ -194,6 +223,26 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
     unawaited(storage.saveNotificationsEnabled(notificationsEnabled));
   }
 
+  void saveFocusSessionRecords() {
+    final storage = localStorage;
+    if (storage == null) {
+      return;
+    }
+    unawaited(storage.saveFocusSessionRecords(focusSessionRecords));
+  }
+
+  void deleteFocusSessionRecordsForDeletedPreset(int presetId) {
+    final preset = presets.firstWhere((preset) => preset.id == presetId);
+    if (preset.deletedAt == null) {
+      return;
+    }
+
+    setState(() {
+      focusSessionRecords.removeWhere((record) => record.presetId == presetId);
+    });
+    saveFocusSessionRecords();
+  }
+
   Future<bool> setNotificationsEnabled(bool enabled) async {
     final nextEnabled =
         enabled && await notificationService.requestPermission();
@@ -248,8 +297,18 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
           action,
       {bool persist = true}) {
     final previousTimerState = timerState;
+    final now = DateTime.now();
+    final nextTimerState = action(timerState, now);
+    final completedFocusRecords = focusSessionRecordsCompletedBy(
+      previousTimerState,
+      now,
+      config: timerEngine.config,
+      preset: activePreset,
+      existingRecords: focusSessionRecords,
+    );
     setState(() {
-      timerState = action(timerState, DateTime.now());
+      timerState = nextTimerState;
+      focusSessionRecords.addAll(completedFocusRecords);
     });
     if (timerState.status == PomodoroTimerStatus.running) {
       startTicker();
@@ -257,6 +316,10 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
       stopTickerIfNotRunning();
     }
     if (persist) {
+      saveTimerState();
+    }
+    if (completedFocusRecords.isNotEmpty) {
+      saveFocusSessionRecords();
       saveTimerState();
     }
     syncTimerNotificationIfNeeded(previousTimerState);
@@ -439,6 +502,7 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
                               selectedTheme: selectedTheme,
                               presets: presets,
                               activePreset: activePreset,
+                              focusSessionRecords: focusSessionRecords,
                               notificationsEnabled: notificationsEnabled,
                               onThemeSelected: (theme) {
                                 setState(() => selectedTheme = theme);
@@ -448,6 +512,8 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
                               onPresetCreated: createPreset,
                               onPresetUpdated: updatePreset,
                               onPresetDeleted: deletePreset,
+                              onDeletedPresetStatisticsDeleted:
+                                  deleteFocusSessionRecordsForDeletedPreset,
                               onNotificationsEnabledChanged:
                                   setNotificationsEnabled,
                             ),

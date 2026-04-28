@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../../core/presentation/widgets/dreamy_backdrop.dart';
 import '../../presets/domain/timer_preset.dart';
 import '../../presets/presentation/preset_form_screen.dart';
+import '../../presets/presentation/preset_presentation_mappers.dart';
 import '../../presets/presentation/widgets/preset_selector.dart';
+import '../../statistics/domain/focus_session_record.dart';
 import '../domain/pomodoro_theme.dart';
 
 class ConfigurationScreen extends StatefulWidget {
@@ -12,18 +14,21 @@ class ConfigurationScreen extends StatefulWidget {
     required this.selectedTheme,
     required this.presets,
     required this.activePreset,
+    required this.focusSessionRecords,
     required this.notificationsEnabled,
     required this.onThemeSelected,
     required this.onPresetSelected,
     required this.onPresetCreated,
     required this.onPresetUpdated,
     required this.onPresetDeleted,
+    required this.onDeletedPresetStatisticsDeleted,
     required this.onNotificationsEnabledChanged,
   });
 
   final PomodoroThemeOption selectedTheme;
   final List<TimerPreset> presets;
   final TimerPreset activePreset;
+  final List<FocusSessionRecord> focusSessionRecords;
   final bool notificationsEnabled;
   final ValueChanged<PomodoroThemeOption> onThemeSelected;
   final ValueChanged<TimerPreset> onPresetSelected;
@@ -31,6 +36,7 @@ class ConfigurationScreen extends StatefulWidget {
   final TimerPreset Function(TimerPreset preset, PresetFormValues values)
       onPresetUpdated;
   final TimerPreset Function(TimerPreset preset) onPresetDeleted;
+  final ValueChanged<int> onDeletedPresetStatisticsDeleted;
   final Future<bool> Function(bool enabled) onNotificationsEnabledChanged;
 
   @override
@@ -157,6 +163,16 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                           onChanged: setNotificationsEnabled,
                         ),
                         const SizedBox(height: 18),
+                        _StatisticsCard(
+                          theme: selectedTheme,
+                          records: widget.focusSessionRecords,
+                          presets: widget.presets,
+                          onDeletedPresetStatisticsDeleted: (presetId) {
+                            widget.onDeletedPresetStatisticsDeleted(presetId);
+                            setState(() {});
+                          },
+                        ),
+                        const SizedBox(height: 18),
                         _ThemeListSelector(
                           selectedTheme: selectedTheme,
                           onThemeSelected: selectTheme,
@@ -172,6 +188,370 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       ),
     );
   }
+}
+
+class _StatisticsCard extends StatelessWidget {
+  const _StatisticsCard({
+    required this.theme,
+    required this.records,
+    required this.presets,
+    required this.onDeletedPresetStatisticsDeleted,
+  });
+
+  final PomodoroThemeOption theme;
+  final List<FocusSessionRecord> records;
+  final List<TimerPreset> presets;
+  final ValueChanged<int> onDeletedPresetStatisticsDeleted;
+
+  @override
+  Widget build(BuildContext context) {
+    final summaries = focusSessionSummariesByPreset(records);
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: theme.card.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: theme.card.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: theme.softAccent.withValues(alpha: 0.58),
+                  borderRadius: BorderRadius.circular(19),
+                  border:
+                      Border.all(color: Colors.white.withValues(alpha: 0.5)),
+                ),
+                child: Icon(Icons.insights_rounded, color: theme.ink, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Statistics',
+                      style: theme.headingFont(
+                        color: theme.onPrimary,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Completed focus sessions only. Breaks stay cozy and uncounted.',
+                      style: theme.bodyFont(
+                        color: theme.onPrimary.withValues(alpha: 0.84),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _StatisticTotalTile(
+                  theme: theme,
+                  label: 'Sessions',
+                  value: completedFocusSessionCount(records).toString(),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _StatisticTotalTile(
+                  theme: theme,
+                  label: 'Focus time',
+                  value: _formatFocusDuration(totalFocusDuration(records)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (summaries.isEmpty)
+            Text(
+              'No completed focus sessions yet.',
+              style: theme.bodyFont(
+                color: theme.onPrimary.withValues(alpha: 0.78),
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+              ),
+            )
+          else
+            for (final summary in summaries) ...[
+              _PresetStatisticRow(
+                theme: theme,
+                summary: summary,
+                deletedPreset: _isDeletedPreset(summary.presetId),
+                onDelete: summary.presetId == null
+                    ? null
+                    : () => _confirmDeleteHistoricalStatistics(
+                          context,
+                          summary,
+                        ),
+              ),
+              if (summary != summaries.last) const SizedBox(height: 10),
+            ],
+        ],
+      ),
+    );
+  }
+
+  bool _isDeletedPreset(int? presetId) {
+    return presets.any(
+      (preset) => preset.id == presetId && preset.deletedAt != null,
+    );
+  }
+
+  Future<void> _confirmDeleteHistoricalStatistics(
+    BuildContext context,
+    FocusSessionPresetSummary summary,
+  ) async {
+    if (!_isDeletedPreset(summary.presetId)) {
+      return;
+    }
+
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: theme.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.56)),
+          ),
+          title: Text(
+            'Delete ${summary.presetNameSnapshot} statistics?',
+            style: theme.headingFont(
+              color: theme.ink,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          content: Text(
+            'This permanently removes historical focus statistics for this deleted preset.',
+            style: theme.bodyFont(
+              color: theme.ink.withValues(alpha: 0.72),
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              height: 1.35,
+            ),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Cancel',
+                style: theme.bodyFont(fontWeight: FontWeight.w900),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: theme.primary,
+                foregroundColor: theme.onPrimary,
+              ),
+              child: Text(
+                'Delete stats',
+                style: theme.bodyFont(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete ?? false) {
+      onDeletedPresetStatisticsDeleted(summary.presetId!);
+    }
+  }
+}
+
+class _StatisticTotalTile extends StatelessWidget {
+  const _StatisticTotalTile({
+    required this.theme,
+    required this.label,
+    required this.value,
+  });
+
+  final PomodoroThemeOption theme;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.card.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.42)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: theme.headingFont(
+              color: theme.ink,
+              fontSize: 25,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.8,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: theme.bodyFont(
+              color: theme.ink.withValues(alpha: 0.64),
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PresetStatisticRow extends StatelessWidget {
+  const _PresetStatisticRow({
+    required this.theme,
+    required this.summary,
+    required this.deletedPreset,
+    required this.onDelete,
+  });
+
+  final PomodoroThemeOption theme;
+  final FocusSessionPresetSummary summary;
+  final bool deletedPreset;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final cardColor = colorForPresetColorKey(summary.presetColorSnapshot);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.card.withValues(alpha: 0.58),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: cardColor.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(17),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+            ),
+            child: Icon(
+              iconForPresetIconKey(summary.presetIconSnapshot),
+              color: theme.ink,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  summary.presetNameSnapshot,
+                  style: theme.bodyFont(
+                    color: theme.ink,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${summary.sessionsCompleted} sessions - ${_formatFocusDuration(summary.totalDuration)}',
+                  style: theme.bodyFont(
+                    color: theme.ink.withValues(alpha: 0.66),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (deletedPreset) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Deleted preset history',
+                    style: theme.bodyFont(
+                      color: theme.ink.withValues(alpha: 0.52),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (deletedPreset)
+            Tooltip(
+              message: 'Delete ${summary.presetNameSnapshot} statistics',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: onDelete,
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: theme.softAccent.withValues(alpha: 0.38),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.34),
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.delete_sweep_rounded,
+                    color: theme.ink.withValues(alpha: 0.78),
+                    size: 18,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+String _formatFocusDuration(Duration duration) {
+  final days = duration.inDays;
+  final hours = duration.inHours;
+  final remainingHours = duration.inHours.remainder(24);
+  final minutes = duration.inMinutes.remainder(60);
+
+  if (days > 0) {
+    if (remainingHours == 0) {
+      return '${days}d';
+    }
+    return '${days}d ${remainingHours}h';
+  }
+
+  if (hours == 0) {
+    return '${minutes}m';
+  }
+  if (minutes == 0) {
+    return '${hours}h';
+  }
+  return '${hours}h ${minutes}m';
 }
 
 class _NotificationSettingsCard extends StatelessWidget {
