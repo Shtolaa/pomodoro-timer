@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../app/local_pomodoro_storage.dart';
 import '../../../core/presentation/widgets/dreamy_backdrop.dart';
 import '../../app_theme/domain/pomodoro_theme.dart';
 import '../../app_theme/presentation/configuration_screen.dart';
@@ -10,6 +11,7 @@ import '../../presets/domain/preset_color_key.dart';
 import '../../presets/domain/preset_icon_key.dart';
 import '../../presets/domain/timer_preset.dart';
 import '../../presets/presentation/preset_form_screen.dart';
+import '../data/timer_state_codec.dart';
 import '../domain/timer_engine.dart';
 
 final _standardPomodoroPreset = TimerPreset(
@@ -32,7 +34,8 @@ class ThemePrototypeScreen extends StatefulWidget {
   State<ThemePrototypeScreen> createState() => _ThemePrototypeScreenState();
 }
 
-class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
+class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
+    with WidgetsBindingObserver {
   PomodoroThemeOption selectedTheme = PomodoroThemeOption.themes.first;
   late final List<TimerPreset> presets = [_standardPomodoroPreset];
   late TimerPreset activePreset = presets.first;
@@ -40,17 +43,161 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
     config: activePreset.toTimerConfig(),
   );
   late PomodoroTimerState timerState = timerEngine.initialState();
+  LocalPomodoroStorage? localStorage;
   Timer? timerTicker;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(loadPersistedState());
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    saveTimerState();
     timerTicker?.cancel();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      saveTimerState();
+    }
+  }
+
+  Future<void> loadPersistedState() async {
+    final storage = await LocalPomodoroStorage.load();
+    if (!mounted) {
+      localStorage = storage;
+      return;
+    }
+
+    final loadedTheme = storage.loadSelectedTheme();
+    final loadedPresets = storage.loadPresets();
+    final usablePresets = loadedPresets == null ||
+            loadedPresets.every((preset) => preset.deletedAt != null)
+        ? [_standardPomodoroPreset]
+        : loadedPresets;
+    final activePresetId = storage.loadTimerState()?.activePresetId ??
+        storage.loadActivePresetId();
+    final nextActivePreset = activePresetId == null
+        ? usablePresets.firstWhere((preset) => preset.deletedAt == null)
+        : usablePresets.firstWhere(
+            (preset) => preset.id == activePresetId && preset.deletedAt == null,
+            orElse: () => usablePresets.firstWhere(
+              (preset) => preset.deletedAt == null,
+            ),
+          );
+    final nextTimerEngine = PomodoroTimerEngine(
+      config: nextActivePreset.toTimerConfig(),
+    );
+    final loadedTimerState = restoredTimerState(
+      storage.loadTimerState(),
+      activePreset: nextActivePreset,
+      engine: nextTimerEngine,
+    );
+
+    setState(() {
+      localStorage = storage;
+      if (loadedTheme != null) {
+        selectedTheme = loadedTheme;
+      }
+      presets
+        ..clear()
+        ..addAll(usablePresets);
+      activePreset = nextActivePreset;
+      timerEngine = nextTimerEngine;
+      timerState = loadedTimerState;
+    });
+
+    if (timerState.status == PomodoroTimerStatus.running) {
+      startTicker();
+    }
+  }
+
+  PomodoroTimerState restoredTimerState(
+    PersistedTimerState? persisted, {
+    required TimerPreset activePreset,
+    required PomodoroTimerEngine engine,
+  }) {
+    if (persisted == null || persisted.activePresetId != activePreset.id) {
+      return engine.initialState();
+    }
+
+    final state = persisted.state;
+    final maxDuration = engine.config.durationFor(state.sessionType);
+    if (state.pausedRemaining > maxDuration) {
+      return engine.initialState();
+    }
+
+    if (state.status != PomodoroTimerStatus.running) {
+      return state.copyWith(clearStartedAt: true, clearEndsAt: true);
+    }
+
+    final now = DateTime.now();
+    return state.copyWith(
+      startedAt: now,
+      endsAt: now.add(state.pausedRemaining),
+    );
+  }
+
+  PomodoroTimerState timerStateSnapshot([DateTime? now]) {
+    final snapshotAt = now ?? DateTime.now();
+    if (timerState.status != PomodoroTimerStatus.running) {
+      return timerState;
+    }
+
+    final remaining = timerState.remainingAt(snapshotAt, timerEngine.config);
+    return timerState.copyWith(
+      startedAt: snapshotAt,
+      endsAt: snapshotAt.add(remaining),
+      pausedRemaining: remaining,
+    );
+  }
+
+  void saveSelectedTheme() {
+    final storage = localStorage;
+    if (storage == null) {
+      return;
+    }
+    unawaited(storage.saveSelectedTheme(selectedTheme));
+  }
+
+  void savePresetState() {
+    final storage = localStorage;
+    if (storage == null) {
+      return;
+    }
+    unawaited(storage.savePresets(presets));
+    unawaited(storage.saveActivePresetId(activePreset.id));
+  }
+
+  void saveTimerState() {
+    final storage = localStorage;
+    if (storage == null) {
+      return;
+    }
+    unawaited(
+      storage.saveTimerState(
+        PersistedTimerState(
+          activePresetId: activePreset.id,
+          state: timerStateSnapshot(),
+        ),
+      ),
+    );
+  }
+
   void startTicker() {
     timerTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
-      updateTimer((state, now) => timerEngine.advanceTo(state, now));
+      updateTimer(
+        (state, now) => timerEngine.advanceTo(state, now),
+        persist: false,
+      );
     });
   }
 
@@ -62,8 +209,9 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
   }
 
   void updateTimer(
-    PomodoroTimerState Function(PomodoroTimerState state, DateTime now) action,
-  ) {
+      PomodoroTimerState Function(PomodoroTimerState state, DateTime now)
+          action,
+      {bool persist = true}) {
     setState(() {
       timerState = action(timerState, DateTime.now());
     });
@@ -71,6 +219,9 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
       startTicker();
     } else {
       stopTickerIfNotRunning();
+    }
+    if (persist) {
+      saveTimerState();
     }
   }
 
@@ -87,6 +238,7 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
   void resetTimer() {
     setState(() => timerState = timerEngine.reset(timerState));
     stopTickerIfNotRunning();
+    saveTimerState();
   }
 
   void selectPreset(TimerPreset preset) {
@@ -97,6 +249,8 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
     });
     timerTicker?.cancel();
     timerTicker = null;
+    savePresetState();
+    saveTimerState();
   }
 
   TimerPreset createPreset(PresetFormValues values) {
@@ -116,6 +270,7 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
 
     setState(() => presets.add(preset));
     selectPreset(preset);
+    savePresetState();
     return preset;
   }
 
@@ -140,6 +295,8 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
 
     if (activePreset.id == preset.id) {
       selectPreset(updatedPreset);
+    } else {
+      savePresetState();
     }
 
     return updatedPreset;
@@ -151,6 +308,7 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
       return activePreset;
     }
 
+    final wasActivePreset = activePreset.id == preset.id;
     final now = DateTime.now();
     final deletedPreset = preset.copyWith(updatedAt: now, deletedAt: now);
     final fallbackPreset = presets.firstWhere(
@@ -164,11 +322,13 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
       presets[presetIndex] = deletedPreset;
     });
 
-    if (activePreset.id == preset.id) {
+    if (wasActivePreset) {
       selectPreset(fallbackPreset);
+    } else {
+      savePresetState();
     }
 
-    return activePreset.id == preset.id ? fallbackPreset : activePreset;
+    return wasActivePreset ? fallbackPreset : activePreset;
   }
 
   @override
@@ -209,6 +369,7 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
                               activePreset: activePreset,
                               onThemeSelected: (theme) {
                                 setState(() => selectedTheme = theme);
+                                saveSelectedTheme();
                               },
                               onPresetSelected: selectPreset,
                               onPresetCreated: createPreset,
@@ -603,11 +764,7 @@ class _MoonProgressPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeWidth = 16;
     final progressPaint = Paint()
-      ..shader = SweepGradient(
-        startAngle: -math.pi / 2,
-        endAngle: math.pi * 1.5,
-        colors: [theme.accent, theme.secondary, theme.softAccent],
-      ).createShader(Rect.fromCircle(center: center, radius: radius))
+      ..color = theme.softAccent
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeWidth = 16;
@@ -620,9 +777,6 @@ class _MoonProgressPainter extends CustomPainter {
       false,
       progressPaint,
     );
-
-    final moonPaint = Paint()..color = theme.accent;
-    canvas.drawCircle(Offset(center.dx + 78, center.dy - 74), 7, moonPaint);
   }
 
   @override

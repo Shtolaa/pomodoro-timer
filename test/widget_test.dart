@@ -1,8 +1,73 @@
 import 'package:cozy_pomodoro/app/cozy_pomodoro_app.dart';
+import 'package:cozy_pomodoro/app/local_pomodoro_storage.dart';
+import 'package:cozy_pomodoro/features/app_theme/domain/pomodoro_theme.dart';
+import 'package:cozy_pomodoro/features/presets/domain/preset_color_key.dart';
+import 'package:cozy_pomodoro/features/presets/domain/preset_icon_key.dart';
+import 'package:cozy_pomodoro/features/presets/domain/timer_preset.dart';
+import 'package:cozy_pomodoro/features/timer/data/timer_state_codec.dart';
+import 'package:cozy_pomodoro/features/timer/domain/timer_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  TimerPreset standardPreset({DateTime? deletedAt}) {
+    return TimerPreset(
+      id: 1,
+      name: 'Standard Pomodoro',
+      focusDuration: const Duration(minutes: 25),
+      shortBreakDuration: const Duration(minutes: 5),
+      longBreakDuration: const Duration(minutes: 30),
+      sessionsBeforeLongBreak: 4,
+      iconKey: PresetIconKey.book,
+      cardColorKey: PresetColorKey.peach,
+      createdAt: DateTime(2026, 4, 28),
+      updatedAt: deletedAt ?? DateTime(2026, 4, 28),
+      deletedAt: deletedAt,
+    );
+  }
+
+  TimerPreset customPreset({DateTime? deletedAt}) {
+    return TimerPreset(
+      id: 2,
+      name: 'Saved Flow',
+      focusDuration: const Duration(minutes: 12),
+      shortBreakDuration: const Duration(minutes: 3),
+      longBreakDuration: const Duration(minutes: 9),
+      sessionsBeforeLongBreak: 2,
+      iconKey: PresetIconKey.palette,
+      cardColorKey: PresetColorKey.lavender,
+      createdAt: DateTime(2026, 4, 28, 9),
+      updatedAt: deletedAt ?? DateTime(2026, 4, 28, 9),
+      deletedAt: deletedAt,
+    );
+  }
+
+  Future<void> seedStorage({
+    PomodoroThemeOption? theme,
+    List<TimerPreset>? presets,
+    int? activePresetId,
+    PersistedTimerState? timerState,
+  }) async {
+    final storage = await LocalPomodoroStorage.load();
+    if (theme != null) {
+      await storage.saveSelectedTheme(theme);
+    }
+    if (presets != null) {
+      await storage.savePresets(presets);
+    }
+    if (activePresetId != null) {
+      await storage.saveActivePresetId(activePresetId);
+    }
+    if (timerState != null) {
+      await storage.saveTimerState(timerState);
+    }
+  }
+
   testWidgets('switches full app themes from configuration', (tester) async {
     await tester.pumpWidget(const CozyPomodoroApp());
 
@@ -100,6 +165,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('12:00'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const CozyPomodoroApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('12:00'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.tune_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('Morning Pages'), findsOneWidget);
+    expect(find.text('12 min focus'), findsOneWidget);
   });
 
   testWidgets('edits a preset and resets the active timer', (tester) async {
@@ -184,5 +260,129 @@ void main() {
       findsOneWidget,
     );
     expect(find.byTooltip('Delete Standard Pomodoro'), findsNothing);
+  });
+
+  testWidgets('reloads saved theme', (tester) async {
+    await seedStorage(theme: PomodoroThemeOption.themes[2]);
+
+    await tester.pumpWidget(const CozyPomodoroApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cafe Pomodoro'), findsOneWidget);
+    expect(find.text('Warm focus with a sweet table glow'), findsOneWidget);
+  });
+
+  testWidgets('reloads saved preset and active timer duration', (tester) async {
+    await seedStorage(
+      presets: [standardPreset(), customPreset()],
+      activePresetId: 2,
+    );
+
+    await tester.pumpWidget(const CozyPomodoroApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('12:00'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.tune_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Saved Flow'), findsOneWidget);
+    expect(find.text('12 min focus'), findsOneWidget);
+    expect(find.text('3 min break'), findsOneWidget);
+    expect(find.text('9 min long rest'), findsOneWidget);
+  });
+
+  testWidgets('hides soft-deleted persisted presets after reload',
+      (tester) async {
+    final deletedAt = DateTime(2026, 4, 29, 9);
+    await seedStorage(
+      presets: [standardPreset(), customPreset(deletedAt: deletedAt)],
+      activePresetId: 1,
+    );
+
+    await tester.pumpWidget(const CozyPomodoroApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.tune_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Standard Pomodoro'), findsOneWidget);
+    expect(find.text('Saved Flow'), findsNothing);
+
+    final storage = await LocalPomodoroStorage.load();
+    expect(storage.loadPresets()!.last.deletedAt, deletedAt);
+  });
+
+  testWidgets('keeps delete disabled after reload with one active preset',
+      (tester) async {
+    await seedStorage(
+      presets: [
+        standardPreset(),
+        customPreset(deletedAt: DateTime(2026, 4, 29, 9)),
+      ],
+      activePresetId: 1,
+    );
+
+    await tester.pumpWidget(const CozyPomodoroApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.tune_rounded));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byTooltip('Delete unavailable: only one preset remains'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('reloads paused timer state without background catch-up',
+      (tester) async {
+    await seedStorage(
+      presets: [standardPreset()],
+      activePresetId: 1,
+      timerState: PersistedTimerState(
+        activePresetId: 1,
+        state: PomodoroTimerState(
+          sessionType: PomodoroSessionType.focus,
+          status: PomodoroTimerStatus.paused,
+          startedAt: null,
+          endsAt: null,
+          pausedRemaining: const Duration(minutes: 10),
+          completedFocusSessionsInCycle: 0,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(const CozyPomodoroApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('10:00'), findsOneWidget);
+    expect(find.text('Resume'), findsOneWidget);
+  });
+
+  testWidgets('reloads running timer remaining time without catch-up',
+      (tester) async {
+    final savedAt = DateTime(2026, 4, 28, 9);
+    await seedStorage(
+      presets: [standardPreset()],
+      activePresetId: 1,
+      timerState: PersistedTimerState(
+        activePresetId: 1,
+        state: PomodoroTimerState(
+          sessionType: PomodoroSessionType.focus,
+          status: PomodoroTimerStatus.running,
+          startedAt: savedAt,
+          endsAt: savedAt.add(const Duration(minutes: 10)),
+          pausedRemaining: const Duration(minutes: 10),
+          completedFocusSessionsInCycle: 0,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(const CozyPomodoroApp());
+    await tester.pump();
+
+    expect(find.text('10:00'), findsOneWidget);
+    expect(find.text('Pause'), findsOneWidget);
   });
 }

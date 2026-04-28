@@ -76,7 +76,7 @@ The app currently keeps four full visual themes:
 - Preset domain models live in `lib/features/presets/domain` and should remain pure Dart with no Flutter UI dependency.
 - Preset icon and card color choices are represented as curated enum keys in the domain; Flutter icon/color mapping belongs in presentation.
 - Preset IDs are positive integers for local-only storage; new preset IDs should be calculated as max existing preset ID plus one, including soft-deleted presets, and IDs should never be reused.
-- Preset selection currently uses in-memory state until persistence is implemented.
+- Presets are persisted locally with `shared_preferences` as JSON, including soft-deleted presets.
 - The only seeded in-memory preset is Standard Pomodoro: 25-minute focus, 5-minute short break, 30-minute long break, and 4 focus sessions before long break.
 - Selecting a preset resets the active timer immediately to that preset's focus session.
 - Creating a preset appends it to in-memory state, makes it active immediately, and resets the timer to the new focus duration.
@@ -85,10 +85,10 @@ The app currently keeps four full visual themes:
 - If the active preset is deleted, the app selects another non-deleted preset and resets the timer. Delete is disabled when only one non-deleted preset remains.
 - App theme models and theme definitions currently live in `lib/features/app_theme/domain` as a pragmatic UI-adjacent domain model because themes include Flutter `Color`, `IconData`, and `TextStyle` factories.
 - App theme selection UI lives in `lib/features/app_theme/presentation`.
-- Do not add a dependency injection or state management package until persistence, repositories, or richer shared state make it necessary.
-- Theme state currently lives in the main/home screen state.
+- Do not add a dependency injection or state management package until richer shared state makes it necessary.
+- Theme state currently lives in the main/home screen state and the selected theme is persisted locally by stable theme name.
 - Theme changes are passed to the configuration screen through callbacks.
-- Timer state currently lives in the main/home screen state.
+- Timer state currently lives in the main/home screen state and is persisted locally for app reopen in the local-only sense.
 - Timer countdown and session transitions are handled by a pure Dart timer engine in `lib/timer_engine.dart`.
 - The timer engine is timestamp-based in memory and auto-starts the next session after completion.
 - The timer currently uses hardcoded local durations: 25-minute focus, 5-minute short break, 15-minute long break, and a long break after 4 completed focus sessions.
@@ -98,6 +98,10 @@ The app currently keeps four full visual themes:
 - Timer engine tests verify countdown controls, automatic session transitions, duration validation, and display formatting.
 - Future background timer restoration should persist and restore the timestamp-based timer state instead of relying only on in-memory state.
 - Background timer restoration should reconstruct state from persisted start/end timestamps.
+- Local persistence currently stores active preset ID, timer session type, status, nullable start/end timestamps, paused remaining seconds, and completed focus sessions in the current cycle.
+- Local timer restore intentionally does not perform elapsed-time catch-up while the app was closed; a saved running timer resumes from its last saved remaining duration until `feature/background-timer-restore` is implemented.
+- Invalid or corrupt persisted theme, preset, active preset, or timer data falls back safely to the default theme, Standard Pomodoro preset, and an idle focus timer.
+- Local persistence does not include statistics yet; statistics remain the separate roadmap step after notifications.
 - Auto-start behavior must be handled by the timer engine because it affects app reopen logic, notification scheduling, and widget state.
 - Widget and notifications should read/update the same persisted timer state as the app.
 - Statistics should store preset snapshots so deleted presets can still appear in historical data.
@@ -127,12 +131,11 @@ The app currently keeps four full visual themes:
    - Display presets as cozy cards
 
 3. Persistence:
-   - Save selected theme
-   - Save presets
-   - Save active preset
-   - Save active timer state
-   - Save completed focus session statistics
-   - Persist timer state using timestamps so the timer can continue when the app is closed
+    - Save selected theme
+    - Save presets
+    - Save active preset
+    - Save active timer state
+    - Persist timer state using timestamps so the timer can continue when the app is closed
 
 4. Background timer:
    - Timer continues when the app is closed
@@ -273,7 +276,7 @@ FocusSessionRecord
 2. Done: Preset data model
 3. Done: Preset cards and preset selection
 4. Preset create/edit flow
-5. Local persistence
+5. Done: Local persistence
 6. Timestamp-based background timer restoration
 7. Notifications
 8. Statistics
@@ -296,8 +299,11 @@ Timer engine review fixes are complete. Continue feature work in this order:
    - Add create/edit/delete preset flows.
    - Completed with an in-memory preset form, validated preset durations/sessions, curated enum-only icon/color selection, active-on-create behavior, active edit reset behavior, soft-delete hiding, fallback selection when deleting the active preset, and disabled delete when only one non-deleted preset remains.
 
-4. Next: `feature/local-persistence`
-   - Persist selected app theme, presets, active preset, active timer state, and statistics records.
+4. Done: `feature/local-persistence`
+   - Completed with `shared_preferences` local storage for selected app theme, all presets including soft-deleted presets, active preset ID, and active timer state for local reopen.
+   - Persisted presets use JSON with enum names for icon/color keys, stable positive IDs, and soft-delete timestamps.
+   - Invalid or corrupt local data falls back to Standard Pomodoro, the default theme, and an idle focus timer.
+   - Background elapsed-time catch-up, notifications, statistics, and Android widgets are intentionally deferred to later roadmap branches.
 
 5. `feature/background-timer-restore`
    - Restore timestamp-based timer state after app close/reopen and handle auto-started sessions while closed.
