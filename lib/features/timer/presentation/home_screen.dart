@@ -3,10 +3,26 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../core/presentation/widgets/dreamy_backdrop.dart';
 import '../../app_theme/domain/pomodoro_theme.dart';
 import '../../app_theme/presentation/configuration_screen.dart';
+import '../../presets/domain/preset_color_key.dart';
+import '../../presets/domain/preset_icon_key.dart';
+import '../../presets/domain/timer_preset.dart';
 import '../domain/timer_engine.dart';
-import '../../../core/presentation/widgets/dreamy_backdrop.dart';
+
+final _standardPomodoroPreset = TimerPreset(
+  id: 1,
+  name: 'Standard Pomodoro',
+  focusDuration: const Duration(minutes: 25),
+  shortBreakDuration: const Duration(minutes: 5),
+  longBreakDuration: const Duration(minutes: 30),
+  sessionsBeforeLongBreak: 4,
+  iconKey: PresetIconKey.book,
+  cardColorKey: PresetColorKey.peach,
+  createdAt: DateTime(2026, 4, 28),
+  updatedAt: DateTime(2026, 4, 28),
+);
 
 class ThemePrototypeScreen extends StatefulWidget {
   const ThemePrototypeScreen({super.key});
@@ -17,7 +33,11 @@ class ThemePrototypeScreen extends StatefulWidget {
 
 class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
   PomodoroThemeOption selectedTheme = PomodoroThemeOption.themes.first;
-  final PomodoroTimerEngine timerEngine = PomodoroTimerEngine();
+  late final List<TimerPreset> presets = [_standardPomodoroPreset];
+  late TimerPreset activePreset = presets.first;
+  late PomodoroTimerEngine timerEngine = PomodoroTimerEngine(
+    config: activePreset.toTimerConfig(),
+  );
   late PomodoroTimerState timerState = timerEngine.initialState();
   Timer? timerTicker;
 
@@ -68,6 +88,16 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
     stopTickerIfNotRunning();
   }
 
+  void selectPreset(TimerPreset preset) {
+    setState(() {
+      activePreset = preset;
+      timerEngine = PomodoroTimerEngine(config: activePreset.toTimerConfig());
+      timerState = timerEngine.initialState();
+    });
+    timerTicker?.cancel();
+    timerTicker = null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -102,9 +132,12 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
                           MaterialPageRoute<void>(
                             builder: (_) => ConfigurationScreen(
                               selectedTheme: selectedTheme,
+                              presets: presets,
+                              activePreset: activePreset,
                               onThemeSelected: (theme) {
                                 setState(() => selectedTheme = theme);
                               },
+                              onPresetSelected: selectPreset,
                             ),
                           ),
                         );

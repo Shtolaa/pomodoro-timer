@@ -76,6 +76,9 @@ The app currently keeps four full visual themes:
 - Preset domain models live in `lib/features/presets/domain` and should remain pure Dart with no Flutter UI dependency.
 - Preset icon and card color choices are represented as curated enum keys in the domain; Flutter icon/color mapping belongs in presentation.
 - Preset IDs are positive integers for local-only storage; new preset IDs should be calculated as max existing preset ID plus one, including soft-deleted presets, and IDs should never be reused.
+- Preset selection currently uses in-memory state until persistence is implemented.
+- The only seeded in-memory preset is Standard Pomodoro: 25-minute focus, 5-minute short break, 30-minute long break, and 4 focus sessions before long break.
+- Selecting a preset resets the active timer immediately to that preset's focus session.
 - App theme models and theme definitions currently live in `lib/features/app_theme/domain` as a pragmatic UI-adjacent domain model because themes include Flutter `Color`, `IconData`, and `TextStyle` factories.
 - App theme selection UI lives in `lib/features/app_theme/presentation`.
 - Do not add a dependency injection or state management package until persistence, repositories, or richer shared state make it necessary.
@@ -262,9 +265,9 @@ FocusSessionRecord
 
 ## Recommended Build Order
 
-1. Real timer engine with auto-start
-2. Preset data model
-3. Preset cards and preset selection
+1. Done: Real timer engine with auto-start
+2. Done: Preset data model
+3. Done: Preset cards and preset selection
 4. Preset create/edit flow
 5. Local persistence
 6. Timestamp-based background timer restoration
@@ -277,13 +280,15 @@ FocusSessionRecord
 
 Timer engine review fixes are complete. Continue feature work in this order:
 
-1. `feature/timer-presets-model`
+1. Done: `feature/timer-presets-model`
    - Add `TimerPreset`, preset icon keys, preset color keys, curated pastel colors, and validation tests.
+   - Completed with pure Dart preset domain models, positive integer preset IDs, curated icon/color keys, `toTimerConfig()`, `copyWith`, next-ID helper, and validation tests.
 
-2. `feature/preset-cards-selection`
+2. Done: `feature/preset-cards-selection`
    - Add cozy preset cards and active preset selection UI.
+   - Completed with one in-memory Standard Pomodoro preset, configuration-screen preset card, presentation icon/color mapping, and immediate timer reset on preset selection.
 
-3. `feature/preset-create-edit`
+3. Next: `feature/preset-create-edit`
    - Add create/edit/delete preset flows.
 
 4. `feature/local-persistence`
