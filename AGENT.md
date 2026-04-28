@@ -96,12 +96,12 @@ The app currently keeps four full visual themes:
 - Timer display uses ceil-style remaining seconds so a newly started 25-minute timer remains visually at `25:00` during the first partial second.
 - Existing tests verify that the configuration screen can switch from the default theme to Peach Cafe.
 - Timer engine tests verify countdown controls, automatic session transitions, duration validation, and display formatting.
-- Future background timer restoration should persist and restore the timestamp-based timer state instead of relying only on in-memory state.
-- Background timer restoration should reconstruct state from persisted start/end timestamps.
+- Background timer restoration reconstructs running timer state from persisted start/end timestamps and advances through auto-started sessions that elapsed while the app was closed.
+- Paused timer restore preserves the saved paused remaining time without elapsed-time catch-up; idle or invalid timer data falls back safely to an idle focus timer.
 - Local persistence currently stores active preset ID, timer session type, status, nullable start/end timestamps, paused remaining seconds, and completed focus sessions in the current cycle.
-- Local timer restore intentionally does not perform elapsed-time catch-up while the app was closed; a saved running timer resumes from its last saved remaining duration until `feature/background-timer-restore` is implemented.
+- Local timer restore performs elapsed-time catch-up for saved running timers using the active preset's current timer configuration.
 - Invalid or corrupt persisted theme, preset, active preset, or timer data falls back safely to the default theme, Standard Pomodoro preset, and an idle focus timer.
-- Local persistence does not include statistics yet; statistics remain the separate roadmap step after notifications.
+- Local persistence does not include notifications, statistics, or Android widgets yet; those remain separate deferred roadmap steps.
 - Auto-start behavior must be handled by the timer engine because it affects app reopen logic, notification scheduling, and widget state.
 - Widget and notifications should read/update the same persisted timer state as the app.
 - Statistics should store preset snapshots so deleted presets can still appear in historical data.
@@ -277,7 +277,7 @@ FocusSessionRecord
 3. Done: Preset cards and preset selection
 4. Preset create/edit flow
 5. Done: Local persistence
-6. Timestamp-based background timer restoration
+6. Done: Timestamp-based background timer restoration
 7. Notifications
 8. Statistics
 9. Android widget
@@ -305,8 +305,9 @@ Timer engine review fixes are complete. Continue feature work in this order:
    - Invalid or corrupt local data falls back to Standard Pomodoro, the default theme, and an idle focus timer.
    - Background elapsed-time catch-up, notifications, statistics, and Android widgets are intentionally deferred to later roadmap branches.
 
-5. `feature/background-timer-restore`
-   - Restore timestamp-based timer state after app close/reopen and handle auto-started sessions while closed.
+5. Done: `feature/background-timer-restore`
+   - Completed with domain-level timestamp restoration that catches up running timers after app close/reopen, advances through auto-started sessions while closed, preserves paused timers without catch-up, and falls back safely for invalid or stale persisted timer state.
+   - Notifications, statistics, and Android widgets remain deferred to their separate roadmap branches.
 
 6. `feature/notifications`
    - Add Android notification permission flow and scheduled session completion notifications.

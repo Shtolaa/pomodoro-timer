@@ -155,6 +155,29 @@ class PomodoroTimerEngine {
     return PomodoroTimerState.initial(config);
   }
 
+  PomodoroTimerState restorePersistedState(
+    PomodoroTimerState state,
+    DateTime now,
+  ) {
+    if (!_hasValidCycleCount(state) || !_hasValidRemainingDuration(state)) {
+      return initialState();
+    }
+
+    if (state.status == PomodoroTimerStatus.idle) {
+      return initialState();
+    }
+
+    if (state.status == PomodoroTimerStatus.paused) {
+      return state.copyWith(clearStartedAt: true, clearEndsAt: true);
+    }
+
+    if (!_hasValidRunningTimestamps(state)) {
+      return initialState();
+    }
+
+    return advanceTo(state, now);
+  }
+
   PomodoroTimerState advanceTo(PomodoroTimerState state, DateTime now) {
     if (state.status != PomodoroTimerStatus.running || state.endsAt == null) {
       return state;
@@ -178,6 +201,24 @@ class PomodoroTimerEngine {
     }
 
     return current;
+  }
+
+  bool _hasValidCycleCount(PomodoroTimerState state) {
+    return state.completedFocusSessionsInCycle >= 0 &&
+        state.completedFocusSessionsInCycle <
+            config.focusSessionsBeforeLongBreak;
+  }
+
+  bool _hasValidRemainingDuration(PomodoroTimerState state) {
+    final maxDuration = config.durationFor(state.sessionType);
+    return state.pausedRemaining > Duration.zero &&
+        state.pausedRemaining <= maxDuration;
+  }
+
+  bool _hasValidRunningTimestamps(PomodoroTimerState state) {
+    final startedAt = state.startedAt;
+    final endsAt = state.endsAt;
+    return startedAt != null && endsAt != null && endsAt.isAfter(startedAt);
   }
 
   ({PomodoroSessionType sessionType, int completedFocusSessionsInCycle})

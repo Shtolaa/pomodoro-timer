@@ -174,4 +174,151 @@ void main() {
         ),
         const Duration(minutes: 23));
   });
+
+  test('restores running focus timer within the same session', () {
+    final saved = PomodoroTimerState(
+      sessionType: PomodoroSessionType.focus,
+      status: PomodoroTimerStatus.running,
+      startedAt: now,
+      endsAt: now.add(config.focusDuration),
+      pausedRemaining: config.focusDuration,
+      completedFocusSessionsInCycle: 0,
+    );
+
+    final restored = engine.restorePersistedState(
+      saved,
+      now.add(const Duration(minutes: 8)),
+    );
+
+    expect(restored.sessionType, PomodoroSessionType.focus);
+    expect(restored.status, PomodoroTimerStatus.running);
+    expect(restored.startedAt, now);
+    expect(restored.endsAt, now.add(config.focusDuration));
+    expect(
+      restored.remainingAt(now.add(const Duration(minutes: 8)), config),
+      const Duration(minutes: 17),
+    );
+  });
+
+  test('restores through completed focus into auto-started short break', () {
+    final saved = PomodoroTimerState(
+      sessionType: PomodoroSessionType.focus,
+      status: PomodoroTimerStatus.running,
+      startedAt: now,
+      endsAt: now.add(config.focusDuration),
+      pausedRemaining: config.focusDuration,
+      completedFocusSessionsInCycle: 0,
+    );
+
+    final restored = engine.restorePersistedState(
+      saved,
+      now.add(config.focusDuration).add(const Duration(minutes: 2)),
+    );
+
+    expect(restored.sessionType, PomodoroSessionType.shortBreak);
+    expect(restored.status, PomodoroTimerStatus.running);
+    expect(restored.startedAt, now.add(config.focusDuration));
+    expect(restored.completedFocusSessionsInCycle, 1);
+    expect(
+      restored.remainingAt(
+        now.add(config.focusDuration).add(const Duration(minutes: 2)),
+        config,
+      ),
+      const Duration(minutes: 3),
+    );
+  });
+
+  test('restores through multiple elapsed sessions', () {
+    final saved = PomodoroTimerState(
+      sessionType: PomodoroSessionType.focus,
+      status: PomodoroTimerStatus.running,
+      startedAt: now,
+      endsAt: now.add(config.focusDuration),
+      pausedRemaining: config.focusDuration,
+      completedFocusSessionsInCycle: 0,
+    );
+    final restoredAt = now
+        .add(config.focusDuration)
+        .add(config.shortBreakDuration)
+        .add(const Duration(minutes: 4));
+
+    final restored = engine.restorePersistedState(saved, restoredAt);
+
+    expect(restored.sessionType, PomodoroSessionType.focus);
+    expect(restored.status, PomodoroTimerStatus.running);
+    expect(restored.completedFocusSessionsInCycle, 1);
+    expect(
+      restored.remainingAt(restoredAt, config),
+      const Duration(minutes: 21),
+    );
+  });
+
+  test('restores long break after configured focus sessions', () {
+    final saved = PomodoroTimerState(
+      sessionType: PomodoroSessionType.focus,
+      status: PomodoroTimerStatus.running,
+      startedAt: now,
+      endsAt: now.add(config.focusDuration),
+      pausedRemaining: config.focusDuration,
+      completedFocusSessionsInCycle: config.focusSessionsBeforeLongBreak - 1,
+    );
+
+    final restored = engine.restorePersistedState(
+      saved,
+      now.add(config.focusDuration).add(const Duration(minutes: 6)),
+    );
+
+    expect(restored.sessionType, PomodoroSessionType.longBreak);
+    expect(restored.status, PomodoroTimerStatus.running);
+    expect(restored.completedFocusSessionsInCycle, 0);
+    expect(
+      restored.remainingAt(
+        now.add(config.focusDuration).add(const Duration(minutes: 6)),
+        config,
+      ),
+      const Duration(minutes: 9),
+    );
+  });
+
+  test('restores paused timer without elapsed-time catch-up', () {
+    final saved = PomodoroTimerState(
+      sessionType: PomodoroSessionType.focus,
+      status: PomodoroTimerStatus.paused,
+      startedAt: now,
+      endsAt: now.add(const Duration(minutes: 10)),
+      pausedRemaining: const Duration(minutes: 10),
+      completedFocusSessionsInCycle: 2,
+    );
+
+    final restored = engine.restorePersistedState(
+      saved,
+      now.add(const Duration(hours: 2)),
+    );
+
+    expect(restored.sessionType, PomodoroSessionType.focus);
+    expect(restored.status, PomodoroTimerStatus.paused);
+    expect(restored.startedAt, isNull);
+    expect(restored.endsAt, isNull);
+    expect(restored.pausedRemaining, const Duration(minutes: 10));
+    expect(restored.completedFocusSessionsInCycle, 2);
+  });
+
+  test('falls back to idle focus when running timestamps are invalid', () {
+    final saved = PomodoroTimerState(
+      sessionType: PomodoroSessionType.focus,
+      status: PomodoroTimerStatus.running,
+      startedAt: null,
+      endsAt: now.add(config.focusDuration),
+      pausedRemaining: config.focusDuration,
+      completedFocusSessionsInCycle: 0,
+    );
+
+    final restored = engine.restorePersistedState(saved, now);
+
+    expect(restored.sessionType, PomodoroSessionType.focus);
+    expect(restored.status, PomodoroTimerStatus.idle);
+    expect(restored.pausedRemaining, config.focusDuration);
+    expect(restored.startedAt, isNull);
+    expect(restored.endsAt, isNull);
+  });
 }

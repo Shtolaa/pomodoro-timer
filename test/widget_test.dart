@@ -360,9 +360,8 @@ void main() {
     expect(find.text('Resume'), findsOneWidget);
   });
 
-  testWidgets('reloads running timer remaining time without catch-up',
-      (tester) async {
-    final savedAt = DateTime(2026, 4, 28, 9);
+  testWidgets('reloads running timer with timestamp catch-up', (tester) async {
+    final savedAt = DateTime.now().subtract(const Duration(minutes: 5));
     await seedStorage(
       presets: [standardPreset()],
       activePresetId: 1,
@@ -382,7 +381,36 @@ void main() {
     await tester.pumpWidget(const CozyPomodoroApp());
     await tester.pump();
 
-    expect(find.text('10:00'), findsOneWidget);
+    expect(find.text('05:00'), findsOneWidget);
     expect(find.text('Pause'), findsOneWidget);
+  });
+
+  testWidgets('falls back when persisted active timer preset is deleted',
+      (tester) async {
+    final savedAt = DateTime.now().subtract(const Duration(minutes: 5));
+    await seedStorage(
+      presets: [
+        standardPreset(),
+        customPreset(deletedAt: DateTime(2026, 4, 29, 9)),
+      ],
+      activePresetId: 2,
+      timerState: PersistedTimerState(
+        activePresetId: 2,
+        state: PomodoroTimerState(
+          sessionType: PomodoroSessionType.focus,
+          status: PomodoroTimerStatus.running,
+          startedAt: savedAt,
+          endsAt: savedAt.add(const Duration(minutes: 8)),
+          pausedRemaining: const Duration(minutes: 8),
+          completedFocusSessionsInCycle: 0,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(const CozyPomodoroApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('25:00'), findsOneWidget);
+    expect(find.text('Start'), findsOneWidget);
   });
 }
