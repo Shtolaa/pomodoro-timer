@@ -13,6 +13,7 @@ class LocalPomodoroStorage {
   static const _presetsKey = 'timer_presets';
   static const _activePresetIdKey = 'active_preset_id';
   static const _timerStateKey = 'timer_state';
+  static const _notificationsEnabledKey = 'notifications_enabled';
 
   final SharedPreferences preferences;
 
@@ -58,5 +59,13 @@ class LocalPomodoroStorage {
 
   Future<void> saveTimerState(PersistedTimerState timerState) async {
     await preferences.setString(_timerStateKey, encodeTimerState(timerState));
+  }
+
+  bool loadNotificationsEnabled() {
+    return preferences.getBool(_notificationsEnabledKey) ?? false;
+  }
+
+  Future<void> saveNotificationsEnabled(bool enabled) async {
+    await preferences.setBool(_notificationsEnabledKey, enabled);
   }
 }

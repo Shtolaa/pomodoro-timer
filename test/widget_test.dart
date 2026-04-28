@@ -82,6 +82,7 @@ void main() {
     expect(find.text('Configuration'), findsOneWidget);
     expect(find.text('App Theme'), findsOneWidget);
     expect(find.text('Timer Preset'), findsOneWidget);
+    expect(find.text('Notifications'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('Timer Preset')).dy,
       lessThan(tester.getTopLeft(find.text('App Theme')).dy),

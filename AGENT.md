@@ -98,10 +98,16 @@ The app currently keeps four full visual themes:
 - Timer engine tests verify countdown controls, automatic session transitions, duration validation, and display formatting.
 - Background timer restoration reconstructs running timer state from persisted start/end timestamps and advances through auto-started sessions that elapsed while the app was closed.
 - Paused timer restore preserves the saved paused remaining time without elapsed-time catch-up; idle or invalid timer data falls back safely to an idle focus timer.
-- Local persistence currently stores active preset ID, timer session type, status, nullable start/end timestamps, paused remaining seconds, and completed focus sessions in the current cycle.
+- Local persistence currently stores active preset ID, timer session type, status, nullable start/end timestamps, paused remaining seconds, completed focus sessions in the current cycle, and whether notifications are enabled.
 - Local timer restore performs elapsed-time catch-up for saved running timers using the active preset's current timer configuration.
 - Invalid or corrupt persisted theme, preset, active preset, or timer data falls back safely to the default theme, Standard Pomodoro preset, and an idle focus timer.
-- Local persistence does not include notifications, statistics, or Android widgets yet; those remain separate deferred roadmap steps.
+- Android local notifications are implemented with `flutter_local_notifications`, inexact scheduled notifications for the next running session's end time, and immediate local notifications for session transitions detected while the app is open.
+- Notifications are off by default; enabling them from the configuration screen requests Android 13+ notification permission and persists the user's setting locally.
+- If notifications are disabled, pending timer notifications are canceled and no new timer notifications are scheduled.
+- Timer notifications are scheduled when a timer starts or resumes, canceled when a timer pauses, resets, or the active preset changes, and rescheduled when a restored running timer is loaded or an in-app auto-start transition advances to a new session. In-app auto-start transitions also show an immediate transition notification using a separate notification ID so the next scheduled notification does not replace it.
+- Notification text names the completed session and the auto-started next session.
+- Notification v1 intentionally uses Android inexact scheduling, so Android battery optimization or Doze may delay delivery. Exact end-time alarms are deferred to notification v2, which should evaluate exact alarm capability handling and `SCHEDULE_EXACT_ALARM` permission UX/policy requirements.
+- Local persistence does not include statistics or Android widgets yet; those remain separate deferred roadmap steps.
 - Auto-start behavior must be handled by the timer engine because it affects app reopen logic, notification scheduling, and widget state.
 - Widget and notifications should read/update the same persisted timer state as the app.
 - Statistics should store preset snapshots so deleted presets can still appear in historical data.
@@ -150,13 +156,15 @@ The app currently keeps four full visual themes:
    - If sessions ended while the app was closed, auto-start subsequent sessions based on saved timestamps
 
 5. Notifications:
-   - Notify when focus session ends
-   - Notify when short break ends
-   - Notify when long break ends
-   - Because sessions auto-start, notifications should explain which session ended and which one started
-   - Add Android notification permission flow
-   - Add notification enable/disable setting
-   - Optional sound and vibration can be added later
+    - Notify when focus session ends
+    - Notify when short break ends
+    - Notify when long break ends
+    - Because sessions auto-start, notifications should explain which session ended and which one started
+    - Add Android notification permission flow
+    - Add notification enable/disable setting
+    - Done: v1 uses inexact scheduled local notifications, Android 13+ notification permission, and a persisted enable/disable setting
+    - Deferred: exact end-time alarms should be evaluated for notification v2
+    - Optional sound and vibration can be added later
 
 6. Configuration screen:
    - Keep app theme selector
@@ -278,7 +286,7 @@ FocusSessionRecord
 4. Preset create/edit flow
 5. Done: Local persistence
 6. Done: Timestamp-based background timer restoration
-7. Notifications
+7. Done: Notifications
 8. Statistics
 9. Android widget
 10. UX polish
@@ -309,8 +317,9 @@ Timer engine review fixes are complete. Continue feature work in this order:
    - Completed with domain-level timestamp restoration that catches up running timers after app close/reopen, advances through auto-started sessions while closed, preserves paused timers without catch-up, and falls back safely for invalid or stale persisted timer state.
    - Notifications, statistics, and Android widgets remain deferred to their separate roadmap branches.
 
-6. `feature/notifications`
-   - Add Android notification permission flow and scheduled session completion notifications.
+6. Done: `feature/notifications`
+   - Completed with Android local notifications, Android 13+ notification permission flow, a persisted enable/disable setting in configuration, inexact scheduled session-completion notifications, cancellation on pause/reset/preset change/disable, and rescheduling after running timer restore or auto-start session transitions.
+   - Notification v1 intentionally avoids exact-alarm permission handling; exact end-time alarms are deferred to notification v2.
 
 7. `feature/statistics`
    - Add completed focus session statistics, total focus hours, and preset breakdowns.
