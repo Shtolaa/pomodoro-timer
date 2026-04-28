@@ -79,6 +79,10 @@ The app currently keeps four full visual themes:
 - Preset selection currently uses in-memory state until persistence is implemented.
 - The only seeded in-memory preset is Standard Pomodoro: 25-minute focus, 5-minute short break, 30-minute long break, and 4 focus sessions before long break.
 - Selecting a preset resets the active timer immediately to that preset's focus session.
+- Creating a preset appends it to in-memory state, makes it active immediately, and resets the timer to the new focus duration.
+- Editing the active preset preserves its ID and creation timestamp, updates its configuration, and resets the timer to the edited focus duration.
+- Deleting a preset soft-deletes it with `deletedAt`; deleted presets are hidden from the active preset selector but remain in memory for future persistence/statistics work.
+- If the active preset is deleted, the app selects another non-deleted preset and resets the timer. Delete is disabled when only one non-deleted preset remains.
 - App theme models and theme definitions currently live in `lib/features/app_theme/domain` as a pragmatic UI-adjacent domain model because themes include Flutter `Color`, `IconData`, and `TextStyle` factories.
 - App theme selection UI lives in `lib/features/app_theme/presentation`.
 - Do not add a dependency injection or state management package until persistence, repositories, or richer shared state make it necessary.
@@ -288,10 +292,11 @@ Timer engine review fixes are complete. Continue feature work in this order:
    - Add cozy preset cards and active preset selection UI.
    - Completed with one in-memory Standard Pomodoro preset, configuration-screen preset card, presentation icon/color mapping, and immediate timer reset on preset selection.
 
-3. Next: `feature/preset-create-edit`
+3. Done: `feature/preset-create-edit`
    - Add create/edit/delete preset flows.
+   - Completed with an in-memory preset form, validated preset durations/sessions, curated enum-only icon/color selection, active-on-create behavior, active edit reset behavior, soft-delete hiding, fallback selection when deleting the active preset, and disabled delete when only one non-deleted preset remains.
 
-4. `feature/local-persistence`
+4. Next: `feature/local-persistence`
    - Persist selected app theme, presets, active preset, active timer state, and statistics records.
 
 5. `feature/background-timer-restore`
