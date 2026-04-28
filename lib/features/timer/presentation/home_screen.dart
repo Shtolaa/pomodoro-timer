@@ -129,21 +129,7 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen>
       return engine.initialState();
     }
 
-    final state = persisted.state;
-    final maxDuration = engine.config.durationFor(state.sessionType);
-    if (state.pausedRemaining > maxDuration) {
-      return engine.initialState();
-    }
-
-    if (state.status != PomodoroTimerStatus.running) {
-      return state.copyWith(clearStartedAt: true, clearEndsAt: true);
-    }
-
-    final now = DateTime.now();
-    return state.copyWith(
-      startedAt: now,
-      endsAt: now.add(state.pausedRemaining),
-    );
+    return engine.restorePersistedState(persisted.state, DateTime.now());
   }
 
   PomodoroTimerState timerStateSnapshot([DateTime? now]) {
