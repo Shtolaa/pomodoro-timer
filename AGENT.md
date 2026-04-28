@@ -58,7 +58,7 @@ The app currently keeps four full visual themes:
 - Home screen:
   - Shows selected theme styling
   - Displays app header
-  - Displays static timer prototype
+  - Displays real in-memory timer countdown
   - Displays palette/type preview
   - Has a configuration button
 
@@ -72,9 +72,13 @@ The app currently keeps four full visual themes:
 
 - Theme state currently lives in the main/home screen state.
 - Theme changes are passed to the configuration screen through callbacks.
-- The timer is still a visual prototype and does not yet implement real countdown behavior.
+- Timer state currently lives in the main/home screen state.
+- Timer countdown and session transitions are handled by a pure Dart timer engine in `lib/timer_engine.dart`.
+- The timer engine is timestamp-based in memory and auto-starts the next session after completion.
+- The timer currently uses hardcoded local durations: 25-minute focus, 5-minute short break, 15-minute long break, and a long break after 4 completed focus sessions.
 - Existing tests verify that the configuration screen can switch from the default theme to Peach Cafe.
-- Future timer implementation should use timestamp-based state instead of relying only on an in-memory countdown.
+- Timer engine tests verify countdown controls and automatic session transitions.
+- Future background timer restoration should persist and restore the timestamp-based timer state instead of relying only on in-memory state.
 - Background timer restoration should reconstruct state from persisted start/end timestamps.
 - Auto-start behavior must be handled by the timer engine because it affects app reopen logic, notification scheduling, and widget state.
 - Widget and notifications should read/update the same persisted timer state as the app.

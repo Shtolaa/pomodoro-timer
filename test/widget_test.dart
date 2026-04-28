@@ -7,7 +7,7 @@ void main() {
     await tester.pumpWidget(const CozyPomodoroApp());
 
     expect(find.text('Moonlit Pomodoro'), findsOneWidget);
-    expect(find.text('18:42'), findsOneWidget);
+    expect(find.text('25:00'), findsOneWidget);
     expect(find.text('Palette + Type'), findsOneWidget);
     expect(find.text('Peach Cafe'), findsNothing);
 
