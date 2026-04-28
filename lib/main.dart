@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import 'timer_engine.dart';
 
 void main() {
   runApp(const CozyPomodoroApp());
@@ -205,6 +208,56 @@ class ThemePrototypeScreen extends StatefulWidget {
 
 class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
   PomodoroThemeOption selectedTheme = PomodoroThemeOption.themes.first;
+  final PomodoroTimerEngine timerEngine = const PomodoroTimerEngine();
+  late PomodoroTimerState timerState = timerEngine.initialState();
+  Timer? timerTicker;
+
+  @override
+  void dispose() {
+    timerTicker?.cancel();
+    super.dispose();
+  }
+
+  void startTicker() {
+    timerTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      updateTimer((state, now) => timerEngine.advanceTo(state, now));
+    });
+  }
+
+  void stopTickerIfNotRunning() {
+    if (timerState.status != PomodoroTimerStatus.running) {
+      timerTicker?.cancel();
+      timerTicker = null;
+    }
+  }
+
+  void updateTimer(
+    PomodoroTimerState Function(PomodoroTimerState state, DateTime now) action,
+  ) {
+    setState(() {
+      timerState = action(timerState, DateTime.now());
+    });
+    if (timerState.status == PomodoroTimerStatus.running) {
+      startTicker();
+    } else {
+      stopTickerIfNotRunning();
+    }
+  }
+
+  void toggleTimer() {
+    updateTimer((state, now) {
+      return switch (state.status) {
+        PomodoroTimerStatus.idle => timerEngine.start(state, now),
+        PomodoroTimerStatus.running => timerEngine.pause(state, now),
+        PomodoroTimerStatus.paused => timerEngine.resume(state, now),
+      };
+    });
+  }
+
+  void resetTimer() {
+    setState(() => timerState = timerEngine.reset(timerState));
+    stopTickerIfNotRunning();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -231,6 +284,10 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
                     constraints: const BoxConstraints(maxWidth: 430),
                     child: _PrototypeContent(
                       selectedTheme: selectedTheme,
+                      timerConfig: timerEngine.config,
+                      timerState: timerState,
+                      onToggleTimer: toggleTimer,
+                      onResetTimer: resetTimer,
                       onOpenConfiguration: () {
                         Navigator.of(context).push(
                           MaterialPageRoute<void>(
@@ -256,10 +313,20 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
 }
 
 class _PrototypeContent extends StatelessWidget {
-  const _PrototypeContent(
-      {required this.selectedTheme, required this.onOpenConfiguration});
+  const _PrototypeContent({
+    required this.selectedTheme,
+    required this.timerConfig,
+    required this.timerState,
+    required this.onToggleTimer,
+    required this.onResetTimer,
+    required this.onOpenConfiguration,
+  });
 
   final PomodoroThemeOption selectedTheme;
+  final PomodoroTimerConfig timerConfig;
+  final PomodoroTimerState timerState;
+  final VoidCallback onToggleTimer;
+  final VoidCallback onResetTimer;
   final VoidCallback onOpenConfiguration;
 
   @override
@@ -269,7 +336,13 @@ class _PrototypeContent extends StatelessWidget {
       children: [
         _Header(theme: selectedTheme, onOpenConfiguration: onOpenConfiguration),
         const SizedBox(height: 18),
-        _TimerCard(theme: selectedTheme),
+        _TimerCard(
+          theme: selectedTheme,
+          timerConfig: timerConfig,
+          timerState: timerState,
+          onToggleTimer: onToggleTimer,
+          onResetTimer: onResetTimer,
+        ),
         const SizedBox(height: 18),
         _PaletteCard(theme: selectedTheme),
         const SizedBox(height: 18),
@@ -669,9 +742,36 @@ class _ThemeListCard extends StatelessWidget {
 }
 
 class _TimerCard extends StatelessWidget {
-  const _TimerCard({required this.theme});
+  const _TimerCard({
+    required this.theme,
+    required this.timerConfig,
+    required this.timerState,
+    required this.onToggleTimer,
+    required this.onResetTimer,
+  });
 
   final PomodoroThemeOption theme;
+  final PomodoroTimerConfig timerConfig;
+  final PomodoroTimerState timerState;
+  final VoidCallback onToggleTimer;
+  final VoidCallback onResetTimer;
+
+  String get primaryButtonLabel {
+    return switch (timerState.status) {
+      PomodoroTimerStatus.idle => 'Start',
+      PomodoroTimerStatus.running => 'Pause',
+      PomodoroTimerStatus.paused => 'Resume',
+    };
+  }
+
+  IconData get primaryButtonIcon {
+    return switch (timerState.status) {
+      PomodoroTimerStatus.running => Icons.pause_rounded,
+      PomodoroTimerStatus.idle ||
+      PomodoroTimerStatus.paused =>
+        Icons.play_arrow_rounded,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -696,13 +796,31 @@ class _TimerCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _SessionPill(label: 'Focus', selected: true, theme: theme),
-              _SessionPill(label: 'Break', selected: false, theme: theme),
-              _SessionPill(label: 'Rest', selected: false, theme: theme),
+              _SessionPill(
+                label: 'Focus',
+                selected: timerState.sessionType == PomodoroSessionType.focus,
+                theme: theme,
+              ),
+              _SessionPill(
+                label: 'Break',
+                selected:
+                    timerState.sessionType == PomodoroSessionType.shortBreak,
+                theme: theme,
+              ),
+              _SessionPill(
+                label: 'Rest',
+                selected:
+                    timerState.sessionType == PomodoroSessionType.longBreak,
+                theme: theme,
+              ),
             ],
           ),
           const SizedBox(height: 26),
-          _TimerDial(theme: theme),
+          _TimerDial(
+            theme: theme,
+            timerConfig: timerConfig,
+            timerState: timerState,
+          ),
           const SizedBox(height: 26),
           Text(
             theme.note,
@@ -718,11 +836,12 @@ class _TimerCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _CozyButton(
-                  label: 'Start',
-                  icon: Icons.play_arrow_rounded,
+                  label: primaryButtonLabel,
+                  icon: primaryButtonIcon,
                   background: theme.primary,
                   foreground: theme.onPrimary,
                   theme: theme,
+                  onTap: onToggleTimer,
                 ),
               ),
               const SizedBox(width: 12),
@@ -732,6 +851,7 @@ class _TimerCard extends StatelessWidget {
                 background: theme.softAccent.withValues(alpha: 0.66),
                 foreground: theme.ink,
                 theme: theme,
+                onTap: onResetTimer,
               ),
             ],
           ),
@@ -772,12 +892,36 @@ class _SessionPill extends StatelessWidget {
 }
 
 class _TimerDial extends StatelessWidget {
-  const _TimerDial({required this.theme});
+  const _TimerDial({
+    required this.theme,
+    required this.timerConfig,
+    required this.timerState,
+  });
 
   final PomodoroThemeOption theme;
+  final PomodoroTimerConfig timerConfig;
+  final PomodoroTimerState timerState;
+
+  String formatRemaining(Duration duration) {
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  String get sessionLabel {
+    return switch (timerState.sessionType) {
+      PomodoroSessionType.focus => 'deep focus',
+      PomodoroSessionType.shortBreak => 'short break',
+      PomodoroSessionType.longBreak => 'long rest',
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final remaining = timerState.remainingAt(now, timerConfig);
+    final progress = timerState.progressAt(now, timerConfig);
+
     return SizedBox(
       width: 238,
       height: 238,
@@ -786,7 +930,7 @@ class _TimerDial extends StatelessWidget {
         children: [
           CustomPaint(
             size: const Size.square(238),
-            painter: _MoonProgressPainter(progress: 0.68, theme: theme),
+            painter: _MoonProgressPainter(progress: progress, theme: theme),
           ),
           Container(
             width: 178,
@@ -814,7 +958,7 @@ class _TimerDial extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                '18:42',
+                formatRemaining(remaining),
                 style: theme.headingFont(
                   color: theme.ink,
                   fontSize: 53,
@@ -823,7 +967,7 @@ class _TimerDial extends StatelessWidget {
                 ),
               ),
               Text(
-                'deep focus',
+                sessionLabel,
                 style: theme.bodyFont(
                   color: theme.ink.withValues(alpha: 0.58),
                   fontSize: 14,
@@ -890,6 +1034,7 @@ class _CozyButton extends StatelessWidget {
     required this.background,
     required this.foreground,
     required this.theme,
+    required this.onTap,
   });
 
   final String label;
@@ -897,37 +1042,42 @@ class _CozyButton extends StatelessWidget {
   final Color background;
   final Color foreground;
   final PomodoroThemeOption theme;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 54,
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(19),
-        boxShadow: [
-          BoxShadow(
-            color: background.withValues(alpha: 0.22),
-            blurRadius: 16,
-            offset: const Offset(0, 9),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: foreground, size: 24),
-          const SizedBox(width: 7),
-          Text(
-            label,
-            style: theme.bodyFont(
-              color: foreground,
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
+    return InkWell(
+      borderRadius: BorderRadius.circular(19),
+      onTap: onTap,
+      child: Container(
+        height: 54,
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(19),
+          boxShadow: [
+            BoxShadow(
+              color: background.withValues(alpha: 0.22),
+              blurRadius: 16,
+              offset: const Offset(0, 9),
             ),
-          ),
-        ],
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: foreground, size: 24),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: theme.bodyFont(
+                color: foreground,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
