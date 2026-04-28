@@ -9,6 +9,7 @@ import '../../app_theme/presentation/configuration_screen.dart';
 import '../../presets/domain/preset_color_key.dart';
 import '../../presets/domain/preset_icon_key.dart';
 import '../../presets/domain/timer_preset.dart';
+import '../../presets/presentation/preset_form_screen.dart';
 import '../domain/timer_engine.dart';
 
 final _standardPomodoroPreset = TimerPreset(
@@ -98,6 +99,78 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
     timerTicker = null;
   }
 
+  TimerPreset createPreset(PresetFormValues values) {
+    final now = DateTime.now();
+    final preset = TimerPreset(
+      id: nextPresetId(presets),
+      name: values.name,
+      focusDuration: Duration(minutes: values.focusMinutes),
+      shortBreakDuration: Duration(minutes: values.shortBreakMinutes),
+      longBreakDuration: Duration(minutes: values.longBreakMinutes),
+      sessionsBeforeLongBreak: values.sessionsBeforeLongBreak,
+      iconKey: values.iconKey,
+      cardColorKey: values.cardColorKey,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    setState(() => presets.add(preset));
+    selectPreset(preset);
+    return preset;
+  }
+
+  TimerPreset updatePreset(TimerPreset preset, PresetFormValues values) {
+    final updatedPreset = preset.copyWith(
+      name: values.name,
+      focusDuration: Duration(minutes: values.focusMinutes),
+      shortBreakDuration: Duration(minutes: values.shortBreakMinutes),
+      longBreakDuration: Duration(minutes: values.longBreakMinutes),
+      sessionsBeforeLongBreak: values.sessionsBeforeLongBreak,
+      iconKey: values.iconKey,
+      cardColorKey: values.cardColorKey,
+      updatedAt: DateTime.now(),
+    );
+
+    setState(() {
+      final presetIndex = presets.indexWhere(
+        (currentPreset) => currentPreset.id == preset.id,
+      );
+      presets[presetIndex] = updatedPreset;
+    });
+
+    if (activePreset.id == preset.id) {
+      selectPreset(updatedPreset);
+    }
+
+    return updatedPreset;
+  }
+
+  TimerPreset deletePreset(TimerPreset preset) {
+    final activePresets = presets.where((preset) => preset.deletedAt == null);
+    if (activePresets.length <= 1) {
+      return activePreset;
+    }
+
+    final now = DateTime.now();
+    final deletedPreset = preset.copyWith(updatedAt: now, deletedAt: now);
+    final fallbackPreset = presets.firstWhere(
+      (candidate) => candidate.deletedAt == null && candidate.id != preset.id,
+    );
+
+    setState(() {
+      final presetIndex = presets.indexWhere(
+        (currentPreset) => currentPreset.id == preset.id,
+      );
+      presets[presetIndex] = deletedPreset;
+    });
+
+    if (activePreset.id == preset.id) {
+      selectPreset(fallbackPreset);
+    }
+
+    return activePreset.id == preset.id ? fallbackPreset : activePreset;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -138,6 +211,9 @@ class _ThemePrototypeScreenState extends State<ThemePrototypeScreen> {
                                 setState(() => selectedTheme = theme);
                               },
                               onPresetSelected: selectPreset,
+                              onPresetCreated: createPreset,
+                              onPresetUpdated: updatePreset,
+                              onPresetDeleted: deletePreset,
                             ),
                           ),
                         );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/presentation/widgets/dreamy_backdrop.dart';
 import '../../presets/domain/timer_preset.dart';
+import '../../presets/presentation/preset_form_screen.dart';
 import '../../presets/presentation/widgets/preset_selector.dart';
 import '../domain/pomodoro_theme.dart';
 
@@ -13,6 +14,9 @@ class ConfigurationScreen extends StatefulWidget {
     required this.activePreset,
     required this.onThemeSelected,
     required this.onPresetSelected,
+    required this.onPresetCreated,
+    required this.onPresetUpdated,
+    required this.onPresetDeleted,
   });
 
   final PomodoroThemeOption selectedTheme;
@@ -20,6 +24,10 @@ class ConfigurationScreen extends StatefulWidget {
   final TimerPreset activePreset;
   final ValueChanged<PomodoroThemeOption> onThemeSelected;
   final ValueChanged<TimerPreset> onPresetSelected;
+  final TimerPreset Function(PresetFormValues values) onPresetCreated;
+  final TimerPreset Function(TimerPreset preset, PresetFormValues values)
+      onPresetUpdated;
+  final TimerPreset Function(TimerPreset preset) onPresetDeleted;
 
   @override
   State<ConfigurationScreen> createState() => _ConfigurationScreenState();
@@ -37,6 +45,42 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   void selectPreset(TimerPreset preset) {
     setState(() => activePreset = preset);
     widget.onPresetSelected(preset);
+  }
+
+  Future<void> createPreset() async {
+    final values = await Navigator.of(context).push<PresetFormValues>(
+      MaterialPageRoute(
+        builder: (_) => PresetFormScreen(theme: selectedTheme),
+      ),
+    );
+    if (values == null || !mounted) {
+      return;
+    }
+
+    setState(() => activePreset = widget.onPresetCreated(values));
+  }
+
+  Future<void> editPreset(TimerPreset preset) async {
+    final values = await Navigator.of(context).push<PresetFormValues>(
+      MaterialPageRoute(
+        builder: (_) => PresetFormScreen(
+          theme: selectedTheme,
+          initialPreset: preset,
+        ),
+      ),
+    );
+    if (values == null || !mounted) {
+      return;
+    }
+
+    final updatedPreset = widget.onPresetUpdated(preset, values);
+    if (activePreset.id == updatedPreset.id) {
+      setState(() => activePreset = updatedPreset);
+    }
+  }
+
+  void deletePreset(TimerPreset preset) {
+    setState(() => activePreset = widget.onPresetDeleted(preset));
   }
 
   @override
@@ -67,16 +111,19 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                       children: [
                         _ConfigurationHeader(theme: selectedTheme),
                         const SizedBox(height: 22),
-                        _ThemeListSelector(
-                          selectedTheme: selectedTheme,
-                          onThemeSelected: selectTheme,
-                        ),
-                        const SizedBox(height: 18),
                         PresetSelector(
                           theme: selectedTheme,
                           presets: widget.presets,
                           activePreset: activePreset,
                           onPresetSelected: selectPreset,
+                          onCreatePreset: createPreset,
+                          onEditPreset: editPreset,
+                          onDeletePreset: deletePreset,
+                        ),
+                        const SizedBox(height: 18),
+                        _ThemeListSelector(
+                          selectedTheme: selectedTheme,
+                          onThemeSelected: selectTheme,
                         ),
                       ],
                     ),
