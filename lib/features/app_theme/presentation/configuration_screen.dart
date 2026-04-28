@@ -1,17 +1,25 @@
 import 'package:flutter/material.dart';
 
-import '../domain/pomodoro_theme.dart';
 import '../../../core/presentation/widgets/dreamy_backdrop.dart';
+import '../../presets/domain/timer_preset.dart';
+import '../../presets/presentation/widgets/preset_selector.dart';
+import '../domain/pomodoro_theme.dart';
 
 class ConfigurationScreen extends StatefulWidget {
   const ConfigurationScreen({
     super.key,
     required this.selectedTheme,
+    required this.presets,
+    required this.activePreset,
     required this.onThemeSelected,
+    required this.onPresetSelected,
   });
 
   final PomodoroThemeOption selectedTheme;
+  final List<TimerPreset> presets;
+  final TimerPreset activePreset;
   final ValueChanged<PomodoroThemeOption> onThemeSelected;
+  final ValueChanged<TimerPreset> onPresetSelected;
 
   @override
   State<ConfigurationScreen> createState() => _ConfigurationScreenState();
@@ -19,10 +27,16 @@ class ConfigurationScreen extends StatefulWidget {
 
 class _ConfigurationScreenState extends State<ConfigurationScreen> {
   late PomodoroThemeOption selectedTheme = widget.selectedTheme;
+  late TimerPreset activePreset = widget.activePreset;
 
   void selectTheme(PomodoroThemeOption theme) {
     setState(() => selectedTheme = theme);
     widget.onThemeSelected(theme);
+  }
+
+  void selectPreset(TimerPreset preset) {
+    setState(() => activePreset = preset);
+    widget.onPresetSelected(preset);
   }
 
   @override
@@ -56,6 +70,13 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                         _ThemeListSelector(
                           selectedTheme: selectedTheme,
                           onThemeSelected: selectTheme,
+                        ),
+                        const SizedBox(height: 18),
+                        PresetSelector(
+                          theme: selectedTheme,
+                          presets: widget.presets,
+                          activePreset: activePreset,
+                          onPresetSelected: selectPreset,
                         ),
                       ],
                     ),
